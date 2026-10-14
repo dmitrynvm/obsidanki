@@ -165,6 +165,12 @@ export class SingleLineParser implements PatternParser {
 		let regReversed = new RegExp(
 			`^(.+?)(${rSepEscaped})(.+?)$`,
 			cardParserRegFlags);
+		// When one delimiter contains the other (default "::" and ":::"), a line written with the
+		// longer one also matches the shorter one's regex. Let the longer delimiter claim it (#65).
+		const dSep = GlobalSettings.OneLineDelimeter;
+		const rSep = GlobalSettings.OneLineReversedDelimeter;
+		const directShadow = rSep.length > dSep.length && rSep.includes(dSep) ? rSep : "";
+		const reversedShadow = dSep.length > rSep.length && dSep.includes(rSep) ? dSep : "";
 		let results: Pattern[] = []
 		for (let body of card.bodyList) {
 			let i;
@@ -174,7 +180,7 @@ export class SingleLineParser implements PatternParser {
 					break; // stop processing due to matcher resets iterator to 0
 				}
 				let [fullText, frontText, sepText, backText] = regArr;
-				if (sepText.length === GlobalSettings.OneLineDelimeter.length) {
+				if (!(directShadow && fullText.includes(directShadow))) {
 					let newID = `#${CardIDTag}/${card.ID}/s/${cyrb53(fullText, 4)}`
 					let tagInfo = TagParser.parse(fullText)
 					let idTag = tagInfo.findTag(CardIDTag, card.ID, "s")
@@ -190,7 +196,7 @@ export class SingleLineParser implements PatternParser {
 					break; // stop processing due to matcher resets iterator to 0
 				}
 				let [fullText, frontText, sepText, backText] = regArr;
-				if (sepText.length === GlobalSettings.OneLineReversedDelimeter.length) {
+				if (!(reversedShadow && fullText.includes(reversedShadow))) {
 					let newIDForward = `#${CardIDTag}/${card.ID}/sf/${cyrb53(fullText, 4)}`
 					let newIDReverse = `#${CardIDTag}/${card.ID}/sr/${cyrb53(fullText, 4)}`
 					let tagInfo = TagParser.parse(fullText)
