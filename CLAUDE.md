@@ -2,112 +2,120 @@
 
 ## Project Overview
 
-**Obsidanki** is a TypeScript-based Obsidian plugin that implements spaced repetition learning using flashcards. The plugin offers minute-level review intervals, rich text support (audio, images, videos), a separate review window, and multiple learning types.
+**Obsidanki** is a TypeScript Obsidian plugin for spaced-repetition flashcards written in vault notes, reviewed on an Anki-style screen (reveal, then grade Again/Hard/Good/Easy). It is a fork of [aosr](https://github.com/linanwx/aosr) by linanwx. Product and design constraints live in `PRODUCT.md`; user documentation in `README.md`.
 
-- **Current Version**: 1.1.5
-- **Author**: linanwx
-- **License**: MIT
-- **Minimum Obsidian Version**: 0.12.0
-- **Upstream Repository**: https://github.com/linanwx/aosr
+- **Current Version**: 2.0.0
+- **Author**: Dmitrii Nikolaev (https://github.com/dmitrynvm)
+- **Repository**: https://github.com/dmitrynvm/obsidanki
+- **License**: MIT (`LICENSE` keeps the linanwx copyright); bundled third-party licenses in `THIRD_PARTY_NOTICES.md`
+- **Minimum Obsidian Version**: 1.7.2 (`Workspace.revealLeaf` returning a Promise needs it), desktop and mobile
+- **UI language**: English only, independent of Obsidian's language
+
+### Upstream
+
+The `upstream` remote points to linanwx/aosr and is fetched with `--no-tags` (`git config remote.upstream.tagOpt --no-tags`). Never push upstream tags to `origin`: the release workflow fires on any tag push.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Install dependencies (yarn classic; use `npx yarn@1.22.22 install` if yarn is not installed)
 yarn install
 
-# Development mode (watch)
-yarn dev
+# Development build (watch, inline source maps)
+npm run dev
 
-# Production build
-yarn build
-
-# Bump version
-yarn version
+# Type check + production build
+npm run build
 ```
 
 ## Project Structure
 
-The project uses a flat structure with all source files at the root level:
+Flat layout, all sources at the root:
 
 ```
 obsidanki/
-├── main.ts              # Plugin entry point (ObsidankiPlugin class)
-├── api.ts               # Public API for external access
-├── view.tsx             # Review UI component (ReviewView)
-├── deckTree.ts          # Vault folder/note tree, rolled-up counts and exact-path scopes
-├── deckTreeMenu.tsx     # Expandable main menu, scoped study and due/all count previews
-├── learningActivity.ts  # Local-day keys, calendar-year weeks, first-Monday month labels and intensity thresholds
-├── learningHeatmap.tsx  # Activity calendar below the tree: one strip on wide panes, two half-year strips when narrow
-├── card.ts              # Card model and parsing
-├── Pattern.ts           # Abstract pattern base class
-├── ParserCollection.ts  # Singleton parser registry
-├── patternLine.tsx      # Single/multi-line patterns (:: and ::: formats)
-├── patternCloze.tsx     # Cloze deletion patterns (== format)
-├── schedule.ts          # Spaced repetition algorithm (SM-2 based)
-├── arrangement.ts       # Card arrangement logic (New/Review/Learn/Hard)
-├── cardSearch.ts        # Card discovery (#Q blocks or unmarked single-line vocabulary)
-├── db.ts                # Data persistence (lowdb)
-├── annotationParse.ts   # Annotation handling (YAML serialization)
-├── tag.ts               # Editor decoration for tags (CodeMirror)
-├── cardHead.ts          # Card ID comments (%%OBSIDANKI/ID%%)
-├── cardWatcher.ts       # Live card tracking
-├── setting.ts           # Configuration UI and state
-├── language.ts          # i18n translations (25+ languages)
-├── markdown.tsx         # Markdown rendering utilities
-├── deck.tsx             # Deck rule engine (json-rules-engine)
-├── migrate.ts           # Data migration tool
-├── nodeContainer.tsx    # React node wrapper
-├── hash.ts              # String hashing (cyrb53)
-├── manifest.json        # Plugin manifest
-├── package.json         # Dependencies
-├── tsconfig.json        # TypeScript configuration
-├── esbuild.config.mjs   # Build configuration
-└── styles.css           # Plugin styles
+├── main.ts               # Plugin entry (ObsidankiPlugin): views, commands, ribbon, settings, parsers, logging
+├── api.ts                # Public API (getAllPattern) for Dataview etc.
+├── view.tsx              # ReviewView: deck tree / study routes, Reviewing screen, embedded deck menu
+├── deckTree.ts           # Vault folder/note tree, rolled-up counts and exact-path scopes
+├── deckTreeMenu.tsx      # Expandable main tree, keyboard navigation, scoped study and due/all previews
+├── deckPreview.tsx       # DeckPreviewView: paginated card lists, search, card preview, source navigation
+├── deckBuilder.tsx       # Deck rule builder modal
+├── deck.tsx              # Deck rule engine (json-rules-engine) and obsidanki-deck-config blocks
+├── learningActivity.ts   # Local-day keys, calendar-year weeks, month labels and intensity thresholds
+├── learningHeatmap.tsx   # Learning activity calendar below the tree
+├── keyboard.ts           # Pane-key gating (paneKeysActive), reveal keys, Escape scope
+├── cardClick.ts          # Card-area click gating and multi-click selection suppression
+├── card.ts               # Card model, sub-card splitting, commitFile persistence boundary
+├── cardSearch.ts         # Card discovery (#Q blocks or unmarked single-line vocabulary)
+├── cardHead.ts           # Card ID comments (%%OBSIDANKI/ID%%)
+├── cardWatcher.ts        # Live card tracking
+├── Pattern.ts            # Abstract pattern base class (SubmitOpt, ID init)
+├── ParserCollection.ts   # Singleton parser registry
+├── patternLine.tsx       # Single-line (::), reversed (:::) and multi-line (?) patterns
+├── patternCloze.tsx      # Cloze (==) and #multicloze patterns
+├── schedule.ts           # Scheduling (SM-2 based, minute-level)
+├── arrangement.ts        # Queues (new/review/learn/study/all)
+├── db.ts                 # Review data persistence (lowdb JSON)
+├── tag.ts                # Tag parsing and the editor ID badge (CodeMirror)
+├── setting.ts            # Settings state and tab
+├── language.ts           # English UI strings (i18next)
+├── markdown.tsx          # Markdown rendering utilities
+├── nodeContainer.tsx     # React node wrapper
+├── hash.ts               # String hashing (cyrb53)
+├── styles.css            # Plugin styles (Obsidian theme variables)
+├── PRODUCT.md            # Product and design constraints
+├── THIRD_PARTY_NOTICES.md # Generated by production builds
+├── esbuild.config.mjs    # Build configuration and notice generation
+├── version-bump.mjs      # Syncs manifest.json / versions.json on `yarn version`
+├── manifest.json, versions.json, package.json, yarn.lock, tsconfig.json
 ```
 
 ## Architecture
 
 ### Core Components
 
-1. **Plugin Entry** (`main.ts`): `ObsidankiPlugin` class extends Obsidian's Plugin, registers views, commands, and settings
+1. **Plugin Entry** (`main.ts`): `ObsidankiPlugin` registers the review and preview views, the ribbon icon (tooltip "Obsidanki"), commands `open-decks` ("Open decks") and `open-deck-builder` ("Open deck rule builder"), the settings tab, parsers and the `obsidanki-deck-config` code block processor.
 
 2. **Card System**:
-   - `card.ts`: Defines `Card` interface and `defaultCard` implementation
+   - `card.ts`: `Card` interface and `defaultCard`; sub-cards split at `***` (or empty lines with `UseNewLineAsSplitter`).
    - `cardSearch.ts`: Explicit `#Q` ranges remain authoritative. Without them, scan non-excluded Markdown notes for configured single-line/reverse delimiters, skipping frontmatter, headings, code and hidden comments. Pass visible candidate lines keyed by source offset to `SingleLineParser`; do not run multi-line/cloze parsers on unmarked notes. Plain-note IDs derive from the note path, with question/occurrence-based pattern IDs; studying them saves schedules without rewriting notes.
-   - `cardWatcher.ts`: Maintains live card index
+   - `cardWatcher.ts`: Maintains live card index.
 
 3. **Pattern System**:
-   - `Pattern.ts`: Abstract base class for all pattern types
-   - `patternLine.tsx`: Single-line (`::`) and reversible (`:::`) patterns
-   - `patternCloze.tsx`: Cloze deletion (`==`) patterns
-   - `ParserCollection.ts`: Singleton registry for pattern parsers
+   - `Pattern.ts`: Abstract base class. `SubmitOpt` applies a grade and persists it; on failure it restores the previous schedule and rethrows, so a retry never grades twice.
+   - `patternLine.tsx`: Single-line (`::`), reversible (`:::`) and multi-line (`?`) patterns.
+   - `patternCloze.tsx`: Cloze (`==`) and `#multicloze` patterns.
+   - `ParserCollection.ts`: Singleton registry for pattern parsers.
 
 4. **Scheduling** (`schedule.ts`):
-   - SM-2-based spaced repetition algorithm
-   - Key parameters: `DefaultEase` (250), `EasyBonus` (1), `HardBonus` (1)
-   - Three stages: New → Learning → Review
+   - SM-2-based, minute-level intervals
+   - Key settings: `DefaultEase` (250), `EasyBonus` (1), `HardBonus` (1)
+   - Stages: New → Learning → Review
 
 5. **Data Persistence** (`db.ts`):
-   - Uses lowdb for JSON storage
-   - Default path: `.obsidian/obsidanki.db`
-   - `DatabaseHelper` singleton manages all operations
-   - `DatabaseHelper.ready` is awaited before registering views/parsers. `saveReview` writes a schedule snapshot and one local-day increment in the optional `activity` date→count map together, serializing writes and publishing activity snapshots only after success. Failed writes restore the previous in-memory database. Existing databases without activity start empty; never infer historical counts from `Last`/`Learned`.
+   - lowdb JSON file read and written through the vault adapter; default `<vault config folder>/obsidanki.db` (normally `.obsidian/obsidanki.db`), saved custom paths keep working.
+   - `DatabaseHelper.getInstance()` singleton API:
+     - `ready`: promise awaited in `onload` before registering views/parsers.
+     - `query(cardID)`: the stored `CardDoc` (schedules) or `null`.
+     - `saveReview(cardID, cardSchedule)`: writes a schedule snapshot and one local-day increment in the optional `activity` date→count map together. Writes are serialized; a failed write restores the previous in-memory database and rejects.
+     - `getActivity()` / `subscribeActivity(listener)`: activity snapshot and change subscription (returns an unsubscribe function); listeners fire only after successful writes.
+   - Existing databases without activity start empty; never infer historical counts from `Last`/`Learned`.
    - `Card.commitFile({schedules: true})` is the shared grade persistence boundary for line/reverse/cloze patterns. It awaits `saveReview`; ID-only initialization does not record activity. The calendar subscribes to successful commits, uses local calendar dates (not UTC day slicing), and keeps its keyboard events out of tree navigation.
 
-6. **UI Layer** (`view.tsx`):
-   - React-based interface; the main menu mirrors the vault's folder/note hierarchy with restored open/closed branches, uniform adaptive indentation, full-width hover/focus rows, elbow guides and aligned due/total counts. Indentation depends on the entire tree depth, not the currently expanded branches. Closing settings after exclusion changes refreshes tree views but leaves active study sessions alone. Embedded rule decks retain a mouse-only Study/Browse menu.
+6. **UI Layer** (`view.tsx`, `deckTreeMenu.tsx`, `deckPreview.tsx`):
+   - The main menu mirrors the vault's folder/note hierarchy with restored open/closed branches, uniform adaptive indentation, full-width hover/focus rows, elbow guides and aligned due/total counts. Indentation depends on the entire tree depth, not the currently expanded branches. Closing settings after exclusion changes refreshes tree views but leaves active study sessions alone. Embedded rule decks retain a mouse-only Study/Browse menu.
    - `CollapsedTreeNodes` stores closed folders' structured `DeckTreeNode.id` values in plugin data. `DeckTreeMenu` restores them on mount and saves toggles through the `ReviewView.saveTreeState` callback injected by the plugin. Hidden descendants and excluded folders retain their entries; new identities start expanded. Fold changes do not create navigation history.
-   - Review screen (`Reviewing`) is plain DOM styled by `styles.css` with Obsidian theme variables: reveal, then Again/Hard/Good/Easy mapped to `ReviewOpt`/`LearnOpt`; keys captured on the host window while the pane is active
+   - Review screen (`Reviewing`) is plain DOM styled by `styles.css` with Obsidian theme variables: reveal, then Again/Hard/Good/Easy mapped to `ReviewOpt`/`LearnOpt`; keys captured on the host window while the pane is active (`keyboard.ts`). If a grade fails to save, a notice shows the error and the card stays on screen.
    - Native navigation stays on one leaf: `ReviewView` stores `{route: tree | study, rule}`; `DeckPreviewView` stores list/card route, scope, query, page and `{path, tagId}` card identity. Both use `navigation=true`, `getState`/`setState` and `ViewStateResult.history`. Search, paging, browse-next and completed-study exit do not add history entries. Forward into study rebuilds the remaining queue from persisted schedules.
    - List rows use `GlobalSettings.SourceNavigationModifier` live: modifier-click or modifier-Space calls `openPatternAt` and selects the current definition. Modified Space is armed on keydown, cancelled on blur and activated on keyup to avoid repeating into the editor. macOS Control-click is handled through `contextmenu`; ordinary context menus and typing keep their native behavior.
-   - i18next for internationalization
+   - Strings come from `language.ts` through i18next with English as the only language. UI text uses sentence case.
 
 ### Design Patterns
 
 - **Singleton**: `ParserCollection.getInstance()`, `DatabaseHelper.getInstance()`, `getAppInstance()`
 - **Factory**: `NewCard()`, `NewCardSearch()`, `NewSchedule()`
-- **Observer**: Card watcher for live updates
+- **Observer**: Card watcher, activity subscriptions
 - **Strategy**: Multiple parser implementations
 
 ## Key Technologies
@@ -115,12 +123,12 @@ obsidanki/
 | Category | Technologies |
 |----------|-------------|
 | Language | TypeScript 4.7 |
-| UI Framework | React 18, Material-UI 5 |
-| Build Tool | esbuild |
+| UI | React 18, Material-UI 5 (builder, previews), plain DOM + `styles.css` |
+| Build | esbuild, yarn classic |
 | Database | lowdb (JSON) |
-| i18n | i18next |
+| Strings | i18next (English only) |
 | Rule Engine | json-rules-engine |
-| Editor | CodeMirror 6 |
+| Editor | CodeMirror 6 (provided by Obsidian) |
 
 ## Development Guidelines
 
@@ -130,55 +138,12 @@ obsidanki/
 - **Functions**: camelCase (`newCard()`, `findOutline()`)
 - **Constants**: UPPERCASE (`CardIDTag`, `VIEW_TYPE_REVIEW`)
 - **DOM Elements**: `contentEl`, `containerEl`, `el`
-
-### File Organization
-
-- One main class/component per file
-- Exports at file level (default or named)
-- Imports at top of file
+- **CSS classes, views**: `obsidanki-*`
 
 ### TypeScript Configuration
 
-- Target: ES6
-- Module: ESNext
-- JSX: react
-- Strict null checks enabled
-- No implicit any
-
-### Code Patterns
-
-```typescript
-// Singleton pattern
-class DatabaseHelper {
-    private static instance: DatabaseHelper;
-    static getInstance(): DatabaseHelper {
-        if (!this.instance) {
-            this.instance = new DatabaseHelper();
-        }
-        return this.instance;
-    }
-}
-
-// Factory pattern
-function NewCard(text: string, path: string): Card {
-    return defaultCard(text, path);
-}
-
-// Interface-based contracts
-interface Card {
-    ID: string;
-    text: string;
-    path: string;
-    // ...
-}
-```
-
-### React Patterns
-
-- Functional components with hooks
-- JSX in `.tsx` files
-- Material-UI component usage
-- i18next context (`I18nextProvider`)
+- Target ES6, module ESNext, JSX react
+- `strictNullChecks` and `noImplicitAny` enabled
 
 ## Card Format Reference
 
@@ -207,127 +172,128 @@ interface Card {
 
 // Cloze patterns
 /==(\S[\s\S]*?)==/gm
-
-// Tag extraction
-/#[\/\w]+/gm
 ```
 
 ## Configuration
 
 ### User Settings (`setting.ts`)
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `DefaultEase` | 250 | Base difficulty multiplier |
-| `EasyBonus` | 1 | Extra days for easy answers |
-| `HardBonus` | 1 | Reduced days for hard answers |
-| `ObsidankiDbPath` | `.obsidian/obsidanki.db` | Database location |
-| `ExcludeWorkingPathesPattern` | (empty) | Glob patterns to exclude |
-| `SourceNavigationModifier` | `Meta` on macOS, `Ctrl` elsewhere | Source-definition shortcut modifier (`Meta`, `Ctrl`, `Alt`, `Shift`) |
-| `CollapsedTreeNodes` | `[]` | Saved collapsed folder identities; managed automatically by the main tree |
+The settings tab has no top-level heading; names are sentence case.
 
-### Customizable Delimiters
+| Key | UI name | Default |
+|-----|---------|---------|
+| `DefaultEase` | Initial ease | 250 |
+| `EasyBonus` | Easy choice bonus | 1 |
+| `HardBonus` | Hard choice bonus | 1 |
+| `SourceNavigationModifier` | Source navigation modifier | `Meta` on macOS, `Ctrl` elsewhere |
+| `ObsidankiDbPath` | Database path | `<vault config folder>/obsidanki.db` |
+| `ExcludeWorkingPathesPattern` | Exclude patterns | (empty) |
+| `MultiLineDelimeter` | Multi-line delimiter | `?` |
+| `OneLineDelimeter` | One-line delimiter | `::` |
+| `OneLineReversedDelimeter` | One-line reversed delimiter | `:::` |
+| `UseNewLineAsSplitter` | Allow empty line as a splitter | `false` |
+| `CollapsedTreeNodes` | (managed by the tree) | `[]` |
 
-| Setting | Default |
-|---------|---------|
-| `OneLineDelimeter` | `::` |
-| `OneLineReversedDelimeter` | `:::` |
-| `MultiLineDelimeter` | `?` |
+### Adding New Settings
+
+1. Add the property to `ObsidankiSettings` and `OBSIDANKI_DEFAULT_SETTINGS` in `setting.ts`
+2. Add the control in `ObsidankiSettingTab.display()` and its strings in `language.ts`
+3. Document it in the README settings table
 
 ## Build System
 
-### esbuild Configuration
+- `npm run build` = `tsc -noEmit -skipLibCheck` + `node esbuild.config.mjs production`: minified CommonJS bundle (`main.js`, ES2018) with `process.env.NODE_ENV` set to `production` (≈1.1 MB), no source maps. It writes `THIRD_PARTY_NOTICES.md` from the bundled packages' license files and appends the same notices to `main.js`.
+- `npm run dev`: watch mode, unminified, inline source maps.
+- External: `obsidian`, `electron`, CodeMirror/Lezer packages, Node builtins.
+- Dependencies are managed with yarn classic (`yarn.lock`). `@codemirror/state` and `@codemirror/view` are pinned through `resolutions` to the versions the `obsidian` 1.14.4 typings expect; keep them in sync when upgrading `obsidian`.
+- `main.js` is not committed.
 
-- **Entry**: `main.ts`
-- **Output**: `main.js` (CommonJS)
-- **Target**: ES2018
-- **Source maps**: Inline in dev, none in prod
-- **External**: `obsidian`, `electron`, CodeMirror, Node builtins
+## Lint
 
-### Scripts
+The official review lint, `eslint-plugin-obsidianmd`, cannot be installed with yarn classic, so run it from a temp folder:
 
 ```bash
-# Watch mode development
-yarn dev
-
-# Type check + production build
-yarn build
-
-# Version bump (updates manifest.json and versions.json)
-yarn version
+mkdir -p /tmp/obsidanki-lint && cd /tmp/obsidanki-lint
+npm init -y && npm install eslint@9 eslint-plugin-obsidianmd@0.4.2 typescript@5
 ```
 
-## CI/CD
+`/tmp/obsidanki-lint/eslint.config.mjs`:
 
-GitHub Actions workflow (`.github/workflows/releases.yml`):
+```js
+import { defineConfig } from "eslint/config";
+import obsidianmd from "eslint-plugin-obsidianmd";
 
-1. Triggers on git tag push
-2. Runs on Ubuntu latest with Node 20.x
-3. Installs dependencies (`yarn --frozen-lockfile`)
-4. Builds (`tsc -noEmit && esbuild production`)
-5. Creates GitHub release
-6. Uploads: `main.js`, `manifest.json`, `styles.css`, `.zip`
+export default defineConfig([
+  { ignores: ["main.js", "node_modules/**", "*.mjs"] },
+  ...obsidianmd.configs.recommended,
+  {
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: "/path/to/obsidanki" },
+    },
+  },
+]);
+```
+
+Run from the repo root:
+
+```bash
+/tmp/obsidanki-lint/node_modules/.bin/eslint --config /tmp/obsidanki-lint/eslint.config.mjs '*.ts' '*.tsx' package.json
+```
+
+## Release
+
+1. `yarn version` (or `yarn version --new-version 2.0.1`): `version-bump.mjs` updates `manifest.json` and `versions.json`, and yarn commits and tags without a `v` prefix (`.yarnrc`/`.npmrc`), e.g. `2.0.1`.
+2. `git push origin main <tag>`.
+
+`.github/workflows/releases.yml` (Node 24) runs on any tag push: `yarn install --frozen-lockfile`, checks that the tag equals the `manifest.json` version, runs `yarn run build`, and publishes a GitHub release with `main.js`, `manifest.json`, `styles.css` and `obsidanki-<tag>.zip`. Raise `minAppVersion` in `manifest.json` before bumping if a release needs a newer Obsidian API.
 
 ## Testing
 
-**Note**: No automated testing framework is currently configured. Quality assurance relies on:
-- ESLint for static analysis
-- TypeScript type checking (strict mode)
-- Manual testing
+No automated test framework. Quality relies on TypeScript type checking (`npm run build`), the official Obsidian lint above, and manual testing in a vault.
 
 ## Common Tasks
 
 ### Adding a New Pattern Type
 
-1. Create new parser class extending `Pattern` in a new `.tsx` file
-2. Implement `parse()` method to detect and extract patterns
-3. Register parser in `ParserCollection`
-4. Add UI component for review display
+1. Create a parser class producing `Pattern` subclasses in a new `.tsx` file
+2. Implement `Parse(card)` to detect and extract patterns, and `insertPatternID()`
+3. Register the parser in `ObsidankiPlugin.registerObsidankiParser()`
+4. Add its `Component` for review display
 
-### Modifying Scheduling Algorithm
+### Modifying Scheduling
 
-Edit `schedule.ts`:
-- `PatternSchedule` interface defines schedule structure
-- `Operation` enum defines review actions
-- `ReviewOpt` and `LearnOpt` handle review logic
-
-### Adding New Settings
-
-1. Add property to `ObsidankiSettings` interface in `setting.ts`
-2. Add default value to `DEFAULT_SETTINGS`
-3. Add UI control in `ObsidankiSettingTab.display()`
-4. Update `loadSettings()` and `saveSettings()` if needed
+Edit `schedule.ts`: `PatternSchedule` defines the stored schedule; `ReviewOpt`/`LearnOpt` apply grades (`ReviewEnum`/`LearnEnum`). Grades map Again=FORGET, Hard=HARD, Good=FAIR, Easy=EASY.
 
 ### Database Operations
 
 ```typescript
-// Get database instance
 const db = DatabaseHelper.getInstance();
+await db.ready;
 
-// Read card data
-const cardDoc = await db.read(cardId);
+// Read a card's stored schedules
+const doc = db.query(cardId); // CardDoc | null
 
-// Write card data
-await db.write(cardId, scheduleData);
+// Persist a grade (schedules + today's activity count); rejects on failure
+await db.saveReview(cardId, cardSchedule);
+
+// Learning activity
+const counts = db.getActivity();
+const unsubscribe = db.subscribeActivity(() => render(db.getActivity()));
 ```
+
+Grades should go through `Pattern.SubmitOpt` / `Card.commitFile({schedules: true})` rather than calling `saveReview` directly.
 
 ## Debugging
 
-Enable debug logging by setting `DEBUG_ENABLED = true` in `main.ts`:
+`DEBUG_ENABLED` is a `const` in `main.ts`; set it to `true` locally to enable `log(() => ...)` output (prefixed `[Obsidanki]`) and a load notice. Keep it `false` in commits.
 
 ```typescript
-export var DEBUG_ENABLED = true;
+const DEBUG_ENABLED: boolean = false;
 
-export function debugLog(...args: any[]) {
-    if (DEBUG_ENABLED) {
-        console.log(...args);
-    }
-}
+log(() => ["GlobalSettings", settings]);
 ```
 
 ## Key Files to Understand
-
-For new contributors, start with these files in order:
 
 1. `main.ts` - Plugin lifecycle and registration
 2. `card.ts` - Core card data structure
@@ -338,10 +304,10 @@ For new contributors, start with these files in order:
 
 ## Known Limitations
 
-- No duplicate pattern content in the same file (relies on unique string matching)
-- "Strict line breaks" mode in Obsidian may cause issues (recommended off)
+- No identical multi-line or cloze patterns in the same card block (relies on unique string matching)
+- "Strict line breaks" mode in Obsidian is untested (recommended off)
 - No automated test coverage
-- Code comments primarily in Chinese
+- Some code comments inherited from upstream are in Chinese
 
 ## External Resources
 
