@@ -1,14 +1,14 @@
-# CLAUDE.md - Aosr Plugin Development Guide
+# CLAUDE.md - Obsidanki Plugin Development Guide
 
 ## Project Overview
 
-**Aosr** (Another Obsidian plugin for Spaced Repetition) is a TypeScript-based Obsidian plugin that implements spaced repetition learning using flashcards. The plugin offers minute-level review intervals, rich text support (audio, images, videos), a separate review window, and multiple learning types.
+**Obsidanki** is a TypeScript-based Obsidian plugin that implements spaced repetition learning using flashcards. The plugin offers minute-level review intervals, rich text support (audio, images, videos), a separate review window, and multiple learning types.
 
 - **Current Version**: 1.1.5
 - **Author**: linanwx
 - **License**: MIT
 - **Minimum Obsidian Version**: 0.12.0
-- **Repository**: https://github.com/linanwx/aosr
+- **Upstream Repository**: https://github.com/linanwx/aosr
 
 ## Quick Start
 
@@ -31,10 +31,14 @@ yarn version
 The project uses a flat structure with all source files at the root level:
 
 ```
-aosr/
-├── main.ts              # Plugin entry point (AosrPlugin class)
+obsidanki/
+├── main.ts              # Plugin entry point (ObsidankiPlugin class)
 ├── api.ts               # Public API for external access
 ├── view.tsx             # Review UI component (ReviewView)
+├── deckTree.ts          # Vault folder/note tree, rolled-up counts and exact-path scopes
+├── deckTreeMenu.tsx     # Expandable main menu, scoped study and due/all count previews
+├── learningActivity.ts  # Local-day keys, calendar-year weeks, first-Monday month labels and intensity thresholds
+├── learningHeatmap.tsx  # Activity calendar below the tree: one strip on wide panes, two half-year strips when narrow
 ├── card.ts              # Card model and parsing
 ├── Pattern.ts           # Abstract pattern base class
 ├── ParserCollection.ts  # Singleton parser registry
@@ -42,11 +46,11 @@ aosr/
 ├── patternCloze.tsx     # Cloze deletion patterns (== format)
 ├── schedule.ts          # Spaced repetition algorithm (SM-2 based)
 ├── arrangement.ts       # Card arrangement logic (New/Review/Learn/Hard)
-├── cardSearch.ts        # Card discovery (#Q blocks)
+├── cardSearch.ts        # Card discovery (#Q blocks or unmarked single-line vocabulary)
 ├── db.ts                # Data persistence (lowdb)
 ├── annotationParse.ts   # Annotation handling (YAML serialization)
 ├── tag.ts               # Editor decoration for tags (CodeMirror)
-├── cardHead.ts          # Card ID tagging (#AOSR/ID)
+├── cardHead.ts          # Card ID comments (%%OBSIDANKI/ID%%)
 ├── cardWatcher.ts       # Live card tracking
 ├── setting.ts           # Configuration UI and state
 ├── language.ts          # i18n translations (25+ languages)
@@ -66,11 +70,11 @@ aosr/
 
 ### Core Components
 
-1. **Plugin Entry** (`main.ts`): `AosrPlugin` class extends Obsidian's Plugin, registers views, commands, and settings
+1. **Plugin Entry** (`main.ts`): `ObsidankiPlugin` class extends Obsidian's Plugin, registers views, commands, and settings
 
 2. **Card System**:
    - `card.ts`: Defines `Card` interface and `defaultCard` implementation
-   - `cardSearch.ts`: Discovers cards using `#Q` block markers
+   - `cardSearch.ts`: Explicit `#Q` ranges remain authoritative. Without them, scan non-excluded Markdown notes for configured single-line/reverse delimiters, skipping frontmatter, headings, code and hidden comments. Pass visible candidate lines keyed by source offset to `SingleLineParser`; do not run multi-line/cloze parsers on unmarked notes. Plain-note IDs derive from the note path, with question/occurrence-based pattern IDs; studying them saves schedules without rewriting notes.
    - `cardWatcher.ts`: Maintains live card index
 
 3. **Pattern System**:
@@ -86,12 +90,17 @@ aosr/
 
 5. **Data Persistence** (`db.ts`):
    - Uses lowdb for JSON storage
-   - Default path: `.obsidian/aosr.db`
+   - Default path: `.obsidian/obsidanki.db`
    - `DatabaseHelper` singleton manages all operations
+   - `DatabaseHelper.ready` is awaited before registering views/parsers. `saveReview` writes a schedule snapshot and one local-day increment in the optional `activity` date→count map together, serializing writes and publishing activity snapshots only after success. Failed writes restore the previous in-memory database. Existing databases without activity start empty; never infer historical counts from `Last`/`Learned`.
+   - `Card.commitFile({schedules: true})` is the shared grade persistence boundary for line/reverse/cloze patterns. It awaits `saveReview`; ID-only initialization does not record activity. The calendar subscribes to successful commits, uses local calendar dates (not UTC day slicing), and keeps its keyboard events out of tree navigation.
 
 6. **UI Layer** (`view.tsx`):
-   - React-based review interface
-   - Material-UI components
+   - React-based interface; the main menu mirrors the vault's folder/note hierarchy with restored open/closed branches, uniform adaptive indentation, full-width hover/focus rows, elbow guides and aligned due/total counts. Indentation depends on the entire tree depth, not the currently expanded branches. Closing settings after exclusion changes refreshes tree views but leaves active study sessions alone. Embedded rule decks retain a mouse-only Study/Browse menu.
+   - `CollapsedTreeNodes` stores closed folders' structured `DeckTreeNode.id` values in plugin data. `DeckTreeMenu` restores them on mount and saves toggles through the `ReviewView.saveTreeState` callback injected by the plugin. Hidden descendants and excluded folders retain their entries; new identities start expanded. Fold changes do not create navigation history.
+   - Review screen (`Reviewing`) is plain DOM styled by `styles.css` with Obsidian theme variables: reveal, then Again/Hard/Good/Easy mapped to `ReviewOpt`/`LearnOpt`; keys captured on the host window while the pane is active
+   - Native navigation stays on one leaf: `ReviewView` stores `{route: tree | study, rule}`; `DeckPreviewView` stores list/card route, scope, query, page and `{path, tagId}` card identity. Both use `navigation=true`, `getState`/`setState` and `ViewStateResult.history`. Search, paging, browse-next and completed-study exit do not add history entries. Forward into study rebuilds the remaining queue from persisted schedules.
+   - List rows use `GlobalSettings.SourceNavigationModifier` live: modifier-click or modifier-Space calls `openPatternAt` and selects the current definition. Modified Space is armed on keydown, cancelled on blur and activated on keyup to avoid repeating into the editor. macOS Control-click is handled through `contextmenu`; ordinary context menus and typing keep their native behavior.
    - i18next for internationalization
 
 ### Design Patterns
@@ -117,7 +126,7 @@ aosr/
 
 ### Naming Conventions
 
-- **Classes**: PascalCase (`AosrPlugin`, `ReviewView`, `PatternSchedule`)
+- **Classes**: PascalCase (`ObsidankiPlugin`, `ReviewView`, `PatternSchedule`)
 - **Functions**: camelCase (`newCard()`, `findOutline()`)
 - **Constants**: UPPERCASE (`CardIDTag`, `VIEW_TYPE_REVIEW`)
 - **DOM Elements**: `contentEl`, `containerEl`, `el`
@@ -175,7 +184,8 @@ interface Card {
 
 ### Card Markers
 
-- **Block Card**: Starts with `#Q`, ends with empty line
+- **Plain vocabulary**: Without explicit blocks, `::` and `:::` lines need no markers. IDs depend on the note path and question/occurrence; renaming or moving the note changes its identity.
+- **Block Card**: Starts with `#Q`, ends at the next Markdown heading, the next `#Q`, or the end of the note
 - **Range Card**: Starts with `#Q`, ends with `#/Q` (supports empty lines)
 - **Sub-card separator**: `***`
 
@@ -211,10 +221,10 @@ interface Card {
 | `DefaultEase` | 250 | Base difficulty multiplier |
 | `EasyBonus` | 1 | Extra days for easy answers |
 | `HardBonus` | 1 | Reduced days for hard answers |
-| `AosrDbPath` | `.obsidian/aosr.db` | Database location |
+| `ObsidankiDbPath` | `.obsidian/obsidanki.db` | Database location |
 | `ExcludeWorkingPathesPattern` | (empty) | Glob patterns to exclude |
-| `HideContext` | false | Hide surrounding context |
-| `ShowHardCardsArrangement` | false | Enable hard cards mode |
+| `SourceNavigationModifier` | `Meta` on macOS, `Ctrl` elsewhere | Source-definition shortcut modifier (`Meta`, `Ctrl`, `Alt`, `Shift`) |
+| `CollapsedTreeNodes` | `[]` | Saved collapsed folder identities; managed automatically by the main tree |
 
 ### Customizable Delimiters
 
@@ -283,9 +293,9 @@ Edit `schedule.ts`:
 
 ### Adding New Settings
 
-1. Add property to `AOSRSettings` interface in `setting.ts`
+1. Add property to `ObsidankiSettings` interface in `setting.ts`
 2. Add default value to `DEFAULT_SETTINGS`
-3. Add UI control in `AOSRSettingTab.display()`
+3. Add UI control in `ObsidankiSettingTab.display()`
 4. Update `loadSettings()` and `saveSettings()` if needed
 
 ### Database Operations

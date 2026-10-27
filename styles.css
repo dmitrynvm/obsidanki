@@ -1,35 +1,987 @@
-.aosr-fuzzy-ctrl .aosr-fuzzy-el {
-    filter: blur(10px);
+/* One visual language across Obsidanki: the vault's reading font and neutral controls. */
+.obsidanki-ui {
+    --obsidanki-control: color-mix(in srgb, var(--text-normal) 6%, transparent);
+    --obsidanki-control-hover: color-mix(in srgb, var(--text-normal) 11%, transparent);
+    --obsidanki-control-active: color-mix(in srgb, var(--text-normal) 16%, transparent);
+    font-family: var(--font-text);
+    font-size: var(--font-ui-medium);
+    line-height: 1.5;
+    color: var(--text-normal);
 }
 
-.aosr-unblur-ctrl .aosr-fuzzy-el {
-    filter: blur(0);
+.obsidanki-ui :is(button, input, textarea, select, .MuiTypography-root, .MuiInputBase-root, .MuiMenuItem-root) {
+    font-family: var(--font-text);
+    letter-spacing: normal;
 }
 
-.aosr-fuzzy-el {
-    transition: filter 0.2s ease-in-out;
+.obsidanki-ui :is(.MuiTypography-root, .MuiInputBase-root, .MuiMenuItem-root, .setting-item-name) {
+    font-size: var(--font-ui-medium);
+    line-height: 1.5;
 }
 
-.aosr-answer {
-    filter: blur(10px);
-    transition: filter 0.2s ease-in-out;
+.obsidanki-ui .MuiTypography-h6,
+.vertical-tab-content.obsidanki-ui > h2:first-child {
+    font-family: var(--font-text);
+    font-size: var(--font-ui-large);
+    /* Things 3 forces bold headings with !important; keep Obsidanki's UI titles quiet. */
+    font-weight: var(--font-normal) !important;
+    color: var(--text-normal);
 }
 
-.aosr-answer.aosr-show {
-    filter: blur(0);
+.vertical-tab-content.obsidanki-ui > h2:first-child {
+    border: none;
 }
 
-/* 增强图片模糊效果并添加噪点和压暗效果 */
-.aosr-answer img {
-    filter: blur(80px) brightness(0.3) contrast(0.8) grayscale(1);
-    transition: filter 0.2s ease-in-out;
+.obsidanki-ui .MuiTypography-body2 {
+    font-size: var(--font-ui-small);
 }
 
-.aosr-answer.aosr-show img {
-    filter: blur(0) brightness(1) contrast(1) grayscale(0);
+.obsidanki-ui .obsidanki-button,
+.obsidanki-ui .setting-item-control > button {
+    height: auto;
+    min-height: 40px;
+    padding: var(--size-4-2) var(--size-4-3);
+    border: none;
+    border-radius: var(--radius-s);
+    background: var(--obsidanki-control);
+    box-shadow: none;
+    color: var(--text-normal);
+    font-size: var(--font-ui-medium);
+    font-weight: var(--font-normal);
+    line-height: 24px;
+    text-transform: none;
+    cursor: pointer;
 }
 
-/* 隐藏Markdown标签 */
-.markdown-reading-view a.tag:is([href^="#AOSR/"]), .markdown-source-view a.tag:is([href^="#AOSR/"]) {
+.obsidanki-ui .obsidanki-button:hover,
+.obsidanki-ui .setting-item-control > button:hover {
+    background: var(--obsidanki-control-hover);
+    box-shadow: none;
+}
+
+.obsidanki-ui .obsidanki-button:active,
+.obsidanki-ui .setting-item-control > button:active {
+    background: var(--obsidanki-control-active);
+}
+
+.obsidanki-ui .obsidanki-button:focus-visible,
+.obsidanki-ui .setting-item-control > button:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+.obsidanki-ui .obsidanki-button:disabled,
+.obsidanki-ui .setting-item-control > button:disabled {
+    background: none;
+    color: var(--text-faint);
+    cursor: default;
+}
+
+.obsidanki-preview {
+    height: 100%;
+}
+
+.obsidanki-preview-row {
+    position: relative;
+    isolation: isolate;
+}
+
+.obsidanki-ui .obsidanki-preview-open {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-s);
+    background: none;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.obsidanki-preview-row:hover .obsidanki-preview-open {
+    background: var(--obsidanki-control);
+}
+
+.obsidanki-preview-open:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: -2px;
+}
+
+.obsidanki-preview-index,
+.obsidanki-preview-text {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.obsidanki-preview-text :is(a, button, input, select, textarea, audio, video, summary, [tabindex], [contenteditable="true"]) {
+    pointer-events: auto;
+}
+
+.obsidanki-preview-actions {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-shrink: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.obsidanki-ui .obsidanki-preview-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    min-height: 32px;
+    padding: var(--size-4-1);
+    background: none;
+    color: var(--text-muted);
+}
+
+.obsidanki-ui .obsidanki-preview-action:hover {
+    color: var(--text-normal);
+}
+
+.is-phone .obsidanki-preview-action {
+    width: 44px;
+}
+
+.obsidanki-preview-row:hover .obsidanki-preview-actions,
+.obsidanki-preview-row:focus-within .obsidanki-preview-actions,
+.is-phone .obsidanki-preview-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+@media (hover: none) {
+    .obsidanki-preview-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .obsidanki-ui .obsidanki-preview-action {
+        width: 44px;
+        min-height: 44px;
+    }
+}
+
+.obsidanki-preview-row .markdown-rendered {
+    font-size: var(--font-ui-medium);
+}
+
+.obsidanki-preview-row .markdown-rendered :is(p, ul, ol, pre, blockquote):first-child {
+    margin-top: 0;
+}
+
+.obsidanki-preview-row .markdown-rendered :is(p, ul, ol, pre, blockquote):last-child {
+    margin-bottom: 0;
+}
+
+.obsidanki-preview-content {
+    padding: 0 var(--size-4-4) var(--size-4-4);
+}
+
+.obsidanki-preview .obsidanki-preview-search {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 40px;
+    padding: var(--size-4-2) var(--size-4-3);
+    font-size: var(--font-ui-medium);
+}
+
+.obsidanki-preview .obsidanki-preview-search::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
+}
+
+.is-phone .obsidanki-preview .obsidanki-preview-search {
+    min-height: 44px;
+}
+
+.obsidanki-preview-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4-2);
+    padding-block: 0 var(--size-4-2);
+    margin-bottom: var(--size-4-1);
+    background: var(--background-primary);
+}
+
+.obsidanki-preview-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-4-2);
+}
+
+.obsidanki-preview-pagination {
+    display: inline-grid;
+    grid-template-columns: 40px auto 40px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+}
+
+.obsidanki-preview-pagination .obsidanki-button {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+}
+
+.obsidanki-preview-pagination .obsidanki-button:first-child {
+    border-radius: var(--radius-s) 0 0 var(--radius-s);
+}
+
+.obsidanki-preview-pagination .obsidanki-button:last-child {
+    border-radius: 0 var(--radius-s) var(--radius-s) 0;
+}
+
+.obsidanki-preview .obsidanki-preview-pages {
+    height: auto;
+    min-height: 40px;
+    padding-inline: var(--size-4-3);
+    border: none;
+    border-inline: 1px solid var(--background-modifier-border);
+    border-radius: 0;
+    appearance: none;
+    background: none;
+    box-shadow: none;
+    color: var(--text-normal);
+    font-size: var(--font-ui-medium);
+    text-align: center;
+    text-align-last: center;
+    cursor: pointer;
+}
+
+.obsidanki-preview .obsidanki-preview-pages:hover {
+    background: var(--obsidanki-control-hover);
+}
+
+.obsidanki-preview .obsidanki-preview-pages:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: -2px;
+}
+
+.is-phone .obsidanki-preview-pagination {
+    grid-template-columns: 44px auto 44px;
+}
+
+.is-phone .obsidanki-preview .obsidanki-preview-pages {
+    min-height: 44px;
+}
+
+.obsidanki-builder .MuiSelect-select {
+    white-space: normal;
+}
+
+.obsidanki-builder .MuiInputBase-root {
+    border-radius: var(--radius-s);
+}
+
+.obsidanki-builder textarea {
+    tab-size: 2;
+}
+
+.obsidanki-menu .MuiMenuItem-root.Mui-selected {
+    background: var(--obsidanki-control-hover);
+}
+
+.is-phone .obsidanki-ui .obsidanki-button,
+.is-phone .obsidanki-ui .setting-item-control > button {
+    min-height: 44px;
+}
+
+/* Review pane: the card fills the pane, the answer bar is pinned to the bottom edge */
+.workspace-leaf-content[data-type="obsidanki-review-view"] > .view-content {
+    padding: 0;
+}
+
+.obsidanki-root {
+    height: 100%;
+}
+
+.obsidanki-review {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    container-type: inline-size;
+}
+
+.obsidanki-review-card {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--size-4-12) var(--size-4-8) var(--size-4-8);
+    font-family: var(--font-text);
+    font-size: calc(var(--font-text-size) * 1.3);
+    line-height: 1.5;
+    text-align: center;
+}
+
+.obsidanki-card {
+    max-width: var(--file-line-width);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25em;
+}
+
+.obsidanki-card :is(p, ul, ol, pre, table, blockquote):first-child {
+    margin-top: 0;
+}
+
+.obsidanki-card :is(p, ul, ol, pre, table, blockquote):last-child {
+    margin-bottom: 0;
+}
+
+.obsidanki-card :is(ul, ol, pre, table, blockquote) {
+    width: fit-content;
+    max-width: 100%;
+    margin-inline: auto;
+    text-align: start;
+}
+
+.obsidanki-card .obsidanki-card-divider {
+    margin: 0;
+}
+
+.markdown-rendered mark.obsidanki-cloze,
+.obsidanki-cloze-blank {
+    background-color: transparent;
+    color: var(--text-accent);
+    font-weight: var(--bold-weight);
+}
+
+.obsidanki-review-bar {
+    flex: none;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 8.5em));
+    justify-content: center;
+    gap: var(--size-4-2);
+    padding: var(--size-4-3) var(--size-4-4) var(--size-4-4);
+    border-top: 1px solid var(--background-modifier-border);
+    font-family: inherit;
+}
+
+.obsidanki-review-action {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--size-4-1);
+}
+
+.obsidanki-review-action:only-child {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: min(100%, 15em);
+}
+
+.obsidanki-review-hint {
+    min-height: 1.4em;
+    font-size: var(--font-ui-smaller);
+    line-height: 1.4;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.obsidanki-review .obsidanki-review-button {
+    display: block;
+    width: 100%;
+    text-align: center;
+}
+
+.obsidanki-review-button .obsidanki-review-key {
+    margin: 0;
+    margin-inline-start: 0.6em;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    font-family: inherit;
+    font-size: var(--font-ui-smaller);
+    line-height: 1;
+    color: var(--text-muted);
+}
+
+
+@container (max-width: 520px) {
+    .obsidanki-review-bar {
+        grid-template-columns: repeat(2, minmax(0, 8.5em));
+    }
+}
+
+.is-phone .obsidanki-review-card {
+    padding: var(--size-4-8) var(--size-4-4) var(--size-4-4);
+    font-size: calc(var(--font-text-size) * 1.15);
+}
+
+.is-phone .obsidanki-review-bar {
+    gap: var(--size-4-2);
+    padding-inline: var(--size-4-2);
+}
+
+.is-phone .obsidanki-review-key {
     display: none;
+}
+
+.is-phone .obsidanki-review .obsidanki-review-button {
+    padding-inline: var(--size-4-2);
+    line-height: 28px;
+}
+
+/* Start menu: the same quiet tiles and unboxed key hints as the reviewer. */
+.obsidanki-start {
+    width: 100%;
+    max-width: 28em;
+    margin: var(--size-4-8) auto 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.obsidanki-start-row {
+    display: flex;
+    align-items: stretch;
+    border-radius: var(--radius-s);
+}
+
+.obsidanki-start-row.is-primary {
+    background: var(--obsidanki-control);
+}
+
+.obsidanki-start-row:hover,
+.obsidanki-start-row.is-selected {
+    background: var(--obsidanki-control-hover);
+}
+
+.obsidanki-start .obsidanki-start-go,
+.obsidanki-start .obsidanki-start-count {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    height: auto;
+    margin: 0;
+    border: none;
+    border-radius: var(--radius-s);
+    background: none;
+    box-shadow: none;
+    font-family: inherit;
+    font-weight: var(--font-normal);
+    line-height: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+.obsidanki-start .obsidanki-start-go {
+    flex: 1;
+    min-width: 0;
+    gap: var(--size-4-3);
+    justify-content: flex-start;
+    padding: var(--size-4-2) var(--size-4-3);
+    font-size: var(--font-ui-medium);
+    text-align: start;
+    white-space: normal;
+}
+
+.obsidanki-start-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.obsidanki-start .is-primary .obsidanki-start-go {
+    min-height: 52px;
+}
+
+.obsidanki-start .obsidanki-start-count {
+    flex: none;
+    min-width: 4em;
+    justify-content: flex-end;
+    padding: var(--size-4-2) var(--size-4-3);
+    font-size: var(--font-ui-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
+.obsidanki-start .obsidanki-start-count:hover {
+    color: var(--text-normal);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.obsidanki-start .obsidanki-start-go:active,
+.obsidanki-start .obsidanki-start-count:active {
+    background: var(--obsidanki-control-active);
+}
+
+.obsidanki-start .obsidanki-start-go:focus-visible,
+.obsidanki-start .obsidanki-start-count:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+.obsidanki-start-status {
+    padding: var(--size-4-2) var(--size-4-3);
+    font-size: var(--font-ui-medium);
+}
+
+.obsidanki-start-next,
+.obsidanki-start-today {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+}
+
+.obsidanki-start-next {
+    display: block;
+    margin-top: var(--size-4-1);
+}
+
+.obsidanki-start-today {
+    margin-top: var(--size-4-3);
+    padding-inline: var(--size-4-3);
+}
+
+.obsidanki-start-decks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4-1);
+    margin-top: var(--size-4-6);
+}
+
+/* One indentation step for the entire tree; all rows share the same outer edges. */
+.obsidanki-tree {
+    --obsidanki-tree-target: 32px;
+    --obsidanki-tree-disclosure: 24px;
+    --obsidanki-tree-count-width: max(var(--obsidanki-tree-target), calc(var(--obsidanki-tree-count-digits) * 1ch + var(--size-4-2)));
+    --obsidanki-tree-min-row: calc(var(--obsidanki-tree-disclosure) + var(--obsidanki-tree-count-width) + var(--obsidanki-tree-count-width) + 10ch);
+    container-type: inline-size;
+    max-width: 42em;
+    min-width: 0;
+    margin-top: var(--size-4-4);
+    padding-inline: var(--size-4-2);
+    box-sizing: border-box;
+}
+
+.obsidanki-tree .obsidanki-tree-roots,
+.obsidanki-tree .obsidanki-tree-children {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    min-width: 0;
+}
+
+.obsidanki-tree-roots {
+    --obsidanki-tree-step: clamp(0px, calc((100cqi - var(--obsidanki-tree-min-row)) / var(--obsidanki-tree-levels)), var(--size-4-6));
+}
+
+.obsidanki-tree .obsidanki-tree-children {
+    padding-inline-start: var(--obsidanki-tree-step);
+}
+
+.obsidanki-tree .obsidanki-tree-children > li::before,
+.obsidanki-tree .obsidanki-tree-children > li::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: calc(var(--obsidanki-tree-disclosure) / 2 - var(--obsidanki-tree-step));
+    pointer-events: none;
+}
+
+.obsidanki-tree .obsidanki-tree-children > li::before {
+    inset-block: 0;
+    border-inline-start: 1px solid var(--indentation-guide-color, var(--text-faint));
+}
+
+.obsidanki-tree .obsidanki-tree-children > li:last-child::before {
+    block-size: calc(var(--obsidanki-tree-target) / 2);
+}
+
+.obsidanki-tree .obsidanki-tree-children > li::after {
+    inset-block-start: calc(var(--obsidanki-tree-target) / 2);
+    inline-size: max(0px, calc(var(--obsidanki-tree-step) - var(--size-4-2)));
+    border-block-start: 1px solid var(--indentation-guide-color, var(--text-faint));
+}
+
+.obsidanki-tree .obsidanki-tree-roots li {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    list-style: none;
+}
+
+.obsidanki-tree .obsidanki-tree-row {
+    min-width: 0;
+    margin: 0;
+    margin-inline-start: calc(-1 * var(--obsidanki-tree-depth) * var(--obsidanki-tree-step));
+    padding-inline-start: calc(var(--obsidanki-tree-depth) * var(--obsidanki-tree-step));
+    background: none;
+}
+
+.obsidanki-tree .obsidanki-tree-row:hover,
+.obsidanki-tree:focus-within .obsidanki-tree-row.is-selected {
+    background: var(--obsidanki-control-hover);
+}
+
+.obsidanki-tree .obsidanki-tree-name {
+    min-height: var(--obsidanki-tree-target);
+    gap: var(--size-4-2);
+    padding: var(--size-4-1);
+    font-size: var(--font-ui-small);
+}
+
+.obsidanki-tree-name .obsidanki-start-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.obsidanki-tree-icon {
+    display: flex;
+    flex: 0 0 16px;
+    align-items: center;
+    color: var(--text-muted);
+}
+
+.obsidanki-tree-toggle,
+.obsidanki-tree-spacer {
+    flex: 0 0 var(--obsidanki-tree-disclosure);
+    width: var(--obsidanki-tree-disclosure);
+}
+
+.obsidanki-tree .obsidanki-tree-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--obsidanki-tree-target);
+    height: auto;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-s);
+    background: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.obsidanki-tree-toggle svg,
+.obsidanki-tree-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.obsidanki-tree .obsidanki-tree-toggle:hover {
+    color: var(--text-normal);
+    background: var(--obsidanki-control-hover);
+}
+
+.obsidanki-tree .obsidanki-tree-toggle:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: -2px;
+}
+
+.obsidanki-tree-counts {
+    display: grid;
+    grid-template-columns: var(--obsidanki-tree-count-width) 1ch var(--obsidanki-tree-count-width);
+    flex: none;
+    align-items: stretch;
+    font-size: var(--font-ui-small);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+}
+
+.obsidanki-tree .obsidanki-start-count,
+.obsidanki-tree-zero {
+    min-height: var(--obsidanki-tree-target);
+    min-width: 0;
+    padding: var(--size-4-1);
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+
+.obsidanki-tree .obsidanki-tree-due,
+.obsidanki-tree-zero {
+    justify-content: flex-end;
+}
+
+.obsidanki-tree .obsidanki-tree-due {
+    color: var(--text-normal);
+}
+
+.obsidanki-tree .obsidanki-tree-total {
+    justify-content: flex-end;
+}
+
+.obsidanki-tree-zero,
+.obsidanki-tree-slash {
+    display: flex;
+    align-items: center;
+}
+
+.obsidanki-tree-slash {
+    justify-content: center;
+    color: var(--text-faint);
+}
+
+.is-phone .obsidanki-tree {
+    --obsidanki-tree-target: 44px;
+    --obsidanki-tree-disclosure: 44px;
+}
+
+@media (pointer: coarse) {
+    .obsidanki-tree {
+        --obsidanki-tree-target: 44px;
+        --obsidanki-tree-disclosure: 44px;
+    }
+}
+
+/* Learning activity shares the tree's reading font and neutral theme colors. */
+@property --obsidanki-activity-cell {
+    syntax: '<length>';
+    inherits: true;
+    initial-value: 10px;
+}
+
+.obsidanki-activity {
+    --obsidanki-activity-gap: 2px;
+    /* Keeps hover, today and focus outlines visible if a very narrow pane has to scroll. */
+    --obsidanki-activity-ring: 4px;
+    --obsidanki-activity-columns: var(--obsidanki-activity-half);
+    /* Registered as a length, so it resolves once here and every track and cell share one size. */
+    --obsidanki-activity-cell: clamp(8px, calc(100cqi / var(--obsidanki-activity-columns) - var(--obsidanki-activity-gap)), 12px);
+    margin-top: var(--size-4-8);
+    padding-top: var(--size-4-4);
+    border-top: 1px solid var(--background-modifier-border);
+    min-width: 0;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.obsidanki-activity-header,
+.obsidanki-activity-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--size-4-2) var(--size-4-4);
+}
+
+.obsidanki-activity-header h2 {
+    margin: 0;
+    padding: 0;
+    border: none;
+    font-family: inherit;
+    font-size: var(--font-ui-medium);
+    font-weight: var(--font-normal) !important;
+    line-height: 1.4;
+    color: var(--text-normal);
+}
+
+.obsidanki-activity-header select {
+    min-height: 32px;
+    padding-inline: var(--size-4-2) var(--size-4-6);
+    font-family: inherit;
+    font-size: var(--font-ui-small);
+    color: var(--text-normal);
+    background-color: var(--obsidanki-control);
+    border: none;
+    border-radius: var(--radius-s);
+    box-shadow: none;
+}
+
+.obsidanki-activity .obsidanki-activity-summary {
+    margin: var(--size-4-1) 0 var(--size-4-4);
+}
+
+/* Narrow panes stack January–June above July–December instead of scrolling. */
+.obsidanki-activity-calendar {
+    display: flex;
+    flex-direction: column;
+    row-gap: var(--size-4-4);
+    margin: calc(-1 * var(--obsidanki-activity-ring));
+    padding: var(--obsidanki-activity-ring);
+    overflow-x: auto;
+    line-height: 1;
+}
+
+.obsidanki-activity-half {
+    display: grid;
+    row-gap: var(--size-4-1);
+    width: max-content;
+}
+
+.obsidanki-activity-months,
+.obsidanki-activity-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--obsidanki-activity-half-weeks), var(--obsidanki-activity-cell));
+    column-gap: var(--obsidanki-activity-gap);
+}
+
+/* Month names annotate the grid at day-square scale instead of reading as a heading row. */
+.obsidanki-activity-months {
+    font-size: var(--font-smallest);
+    white-space: nowrap;
+}
+
+.obsidanki-activity-grid {
+    position: relative;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(7, var(--obsidanki-activity-cell));
+    row-gap: var(--obsidanki-activity-gap);
+}
+
+/* Month boundaries run through the gaps between days, stepping where a month starts mid-week. */
+.obsidanki-activity-edge {
+    --obsidanki-activity-edge-offset: calc(var(--obsidanki-activity-gap) / -2 - 0.5px);
+    position: absolute;
+    background: var(--text-faint);
+    pointer-events: none;
+}
+
+.obsidanki-activity-edge.is-vertical {
+    top: 0;
+    bottom: 0;
+    left: var(--obsidanki-activity-edge-offset);
+    width: 1px;
+}
+
+.obsidanki-activity-edge.is-above {
+    bottom: var(--obsidanki-activity-edge-offset);
+}
+
+.obsidanki-activity-edge.is-below {
+    top: var(--obsidanki-activity-edge-offset);
+}
+
+.obsidanki-activity-edge.is-step {
+    top: var(--obsidanki-activity-edge-offset);
+    left: var(--obsidanki-activity-edge-offset);
+    right: var(--obsidanki-activity-edge-offset);
+    height: 1px;
+}
+
+/* July's boundary on the half-year seam only exists while both halves form one strip. */
+.obsidanki-activity-edge.is-seam {
+    display: none;
+}
+
+/* Wide panes join both halves into one continuous strip. */
+@container (width >= 540px) {
+    .obsidanki-activity {
+        --obsidanki-activity-columns: var(--obsidanki-activity-weeks);
+    }
+
+    .obsidanki-activity-calendar {
+        flex-direction: row;
+        column-gap: var(--obsidanki-activity-gap);
+    }
+
+    .obsidanki-activity-edge.is-seam {
+        display: block;
+    }
+}
+
+.obsidanki-activity .obsidanki-activity-cell {
+    display: block;
+    width: var(--obsidanki-activity-cell);
+    height: var(--obsidanki-activity-cell);
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 2px;
+    background: var(--background-modifier-hover);
+    box-shadow: none;
+}
+
+.obsidanki-activity-cell[data-level="1"] {
+    background: color-mix(in srgb, var(--text-normal) 25%, var(--background-primary));
+}
+
+.obsidanki-activity-cell[data-level="2"] {
+    background: color-mix(in srgb, var(--text-normal) 45%, var(--background-primary));
+}
+
+.obsidanki-activity-cell[data-level="3"] {
+    background: color-mix(in srgb, var(--text-normal) 65%, var(--background-primary));
+}
+
+.obsidanki-activity-cell[data-level="4"] {
+    background: var(--text-normal);
+}
+
+.obsidanki-activity .obsidanki-activity-cell.is-outside {
+    background: none;
+}
+
+/* The rest of the year stays visible as a quiet outline of what is left. */
+.obsidanki-activity .obsidanki-activity-cell.is-future {
+    background: color-mix(in srgb, var(--background-modifier-hover) 45%, transparent);
+}
+
+.obsidanki-activity-cell.is-today {
+    outline: 1px solid var(--text-muted);
+    outline-offset: 1px;
+}
+
+.obsidanki-activity button.obsidanki-activity-cell {
+    cursor: pointer;
+}
+
+/* Today, hover and focus rings stay above month boundaries. */
+.obsidanki-activity button.obsidanki-activity-cell:is(.is-today, :hover, :focus-visible) {
+    position: relative;
+    z-index: 1;
+}
+
+.obsidanki-activity button.obsidanki-activity-cell:hover {
+    outline: 1px solid var(--text-normal);
+    outline-offset: 1px;
+}
+
+.obsidanki-activity .obsidanki-activity-cell:focus-visible,
+.obsidanki-activity select:focus-visible {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 2px;
+}
+
+.obsidanki-activity-footer {
+    margin-top: var(--size-4-3);
+    align-items: baseline;
+}
+
+.obsidanki-activity-legend {
+    display: flex;
+    align-items: center;
+    gap: var(--obsidanki-activity-gap);
+    white-space: nowrap;
+}
+
+.obsidanki-activity-legend > span:first-child {
+    margin-right: var(--size-4-1);
+}
+
+.obsidanki-activity-legend > span:last-child {
+    margin-left: var(--size-4-1);
+}
+
+.obsidanki-activity .obsidanki-activity-empty {
+    margin: var(--size-4-3) 0 0;
+}
+
+@media (pointer: coarse) {
+    .obsidanki-activity-header select {
+        min-height: 44px;
+    }
 }

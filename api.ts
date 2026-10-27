@@ -1,7 +1,7 @@
 import { Pattern } from "Pattern";
 import { NewCardSearch } from "cardSearch";
 
-export class AosrAPI {
+export class ObsidankiAPI {
     async getAllPattern() {
         let search = NewCardSearch()
 		let allcards = await search.search()

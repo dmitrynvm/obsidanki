@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "obsidanki",
 	"version": "1.2.3",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Spaced repetition flashcards with an Anki-style review screen for Obsidian",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
@@ -46,7 +46,6 @@
 		"minimatch": "^10.0.3",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
-		"react-i18next": "^12.3.1",
-		"yaml": "^2.1.1"
+		"react-i18next": "^12.3.1"
 	}
 }

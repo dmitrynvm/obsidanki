@@ -1,36 +1,32 @@
-import AOSRPlugin, { log } from "main";
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import ObsidankiPlugin, { log } from "main";
+import { App, Modifier, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import i18n from 'i18next';
 
-export interface AOSRSettings {
+export interface ObsidankiSettings {
     DefaultEase: number;
     EasyBonus: number;
     HardBonus: number;
-    WordTTSURL: string;
-    WaitingTimeoutBase: number;
-    HideContext: boolean;
     OneLineDelimeter: string;
     OneLineReversedDelimeter: string;
     MultiLineDelimeter: string;
-    AosrDbPath: string;
+    ObsidankiDbPath: string;
     ExcludeWorkingPathesPattern: string;
-    ShowHardCardsArrangement: boolean;
+    SourceNavigationModifier: Exclude<Modifier, "Mod">;
+    CollapsedTreeNodes: string[];
 	UseNewLineAsSplitter: boolean;
 }
 
-export const AOSR_DEFAULT_SETTINGS: AOSRSettings = {
+export const OBSIDANKI_DEFAULT_SETTINGS: ObsidankiSettings = {
     DefaultEase: 250,
     EasyBonus: 1,
     HardBonus: 1,
-    WordTTSURL: "",
-    WaitingTimeoutBase: 7,
-    HideContext: false,
     OneLineDelimeter: "::",
     OneLineReversedDelimeter: ":::",
     MultiLineDelimeter: "?",
-    AosrDbPath: ".obsidian/aosr.db",
+    ObsidankiDbPath: ".obsidian/obsidanki.db",
     ExcludeWorkingPathesPattern: "",
-    ShowHardCardsArrangement: false,
+    SourceNavigationModifier: Platform.isMacOS ? "Meta" : "Ctrl",
+    CollapsedTreeNodes: [],
 	UseNewLineAsSplitter: false
 }
 
@@ -44,28 +40,47 @@ export function parseExcludePatterns(setting: string): string[] {
         .filter((p) => p.length > 0)
 }
 
-export let GlobalSettings: AOSRSettings
+export let GlobalSettings: ObsidankiSettings
 
-export function setGlobalSettings(s: AOSRSettings) {
-    let settings = Object.assign({}, AOSR_DEFAULT_SETTINGS, s);
-    // 1.1.6 的默认值把换行写成了字面量 "\\n"，设置框里显示成一行，用户照着在后面接 "\\nXXX" 就整串失效（#61）
-    settings.ExcludeWorkingPathesPattern = settings.ExcludeWorkingPathesPattern.replace(/\\n/g, "\n");
+export function setGlobalSettings(s: ObsidankiSettings) {
+    let settings = Object.assign({}, OBSIDANKI_DEFAULT_SETTINGS, s);
+    // Discard the retired TTS option from older saved settings.
+    delete (settings as ObsidankiSettings & { WordTTSURL?: string }).WordTTSURL;
     log(() => ["GlobalSettings", settings]);
     GlobalSettings = settings
 }
 
-export class AOSRSettingTab extends PluginSettingTab {
-    plugin: AOSRPlugin;
+export class ObsidankiSettingTab extends PluginSettingTab {
+    plugin: ObsidankiPlugin;
+    private exclusionsAtOpen = "";
 
-    constructor(app: App, plugin: AOSRPlugin) {
+    constructor(app: App, plugin: ObsidankiPlugin) {
         super(app, plugin);
         this.plugin = plugin;
     }
 
     display(): void {
+        this.exclusionsAtOpen = GlobalSettings.ExcludeWorkingPathesPattern;
         const { containerEl } = this;
         containerEl.empty();
-        containerEl.createEl('h2', { text: i18n.t('SettingTextAosrSettings') || "" });
+        containerEl.addClass('obsidanki-ui');
+        containerEl.createEl('h2', { text: i18n.t('SettingTextObsidankiSettings') || "" });
+
+        new Setting(containerEl)
+            .setName(i18n.t('SettingsSourceNavigationModifier') || "")
+            .setDesc(i18n.t('SettingsSourceNavigationModifierDesc') || "")
+            .addDropdown(dropdown => dropdown
+                .addOptions({
+                    Meta: i18n.t(Platform.isMacOS ? 'ModifierCommand' : 'ModifierMeta'),
+                    Ctrl: i18n.t('ModifierControl'),
+                    Alt: i18n.t(Platform.isMacOS ? 'ModifierOption' : 'ModifierAlt'),
+                    Shift: i18n.t('ModifierShift'),
+                })
+                .setValue(GlobalSettings.SourceNavigationModifier)
+                .onChange(async (value) => {
+                    GlobalSettings.SourceNavigationModifier = value as ObsidankiSettings['SourceNavigationModifier'];
+                    await this.plugin.saveSettings();
+                }));
 
         new Setting(containerEl)
             .setName(i18n.t('SettingTextInitEase') || "")
@@ -99,61 +114,6 @@ export class AOSRSettingTab extends PluginSettingTab {
                     GlobalSettings.HardBonus = Number(value);
                     await this.plugin.saveSettings();
                 }));
-
-        new Setting(containerEl)
-            .setName(i18n.t('SettingTextWaitting') || "")
-            .setDesc(i18n.t('SettingTextWaittingDesc') || "")
-            .addSlider(slider => slider
-                .setDynamicTooltip()
-                .setLimits(0, 15, 0.5)
-                .setValue(GlobalSettings.WaitingTimeoutBase)
-                .onChange(async (value) => {
-                    GlobalSettings.WaitingTimeoutBase = Number(value)
-                    await this.plugin.saveSettings();
-                })
-            )
-
-        new Setting(containerEl)
-            .setName(i18n.t('SettingHideContext') || '')
-            .addToggle(toggle => toggle
-                .setValue(GlobalSettings.HideContext)
-                .onChange(async (value) => {
-                    GlobalSettings.HideContext = value
-                    await this.plugin.saveSettings();
-                })
-            )
-
-        new Setting(containerEl)
-            .setName('Word TTS [experiment]')
-            .setDesc('Input a TTS URL to pronounce the single word in the card. Use %s to represent word.')
-            .addText(text => text
-                .setPlaceholder('http://word.tts/%s')
-                .setValue(GlobalSettings.WordTTSURL)
-                .onChange(async (value) => {
-                    GlobalSettings.WordTTSURL = value
-                    await this.plugin.saveSettings();
-                }))
-
-
-        new Setting(containerEl)
-            .setName(i18n.t('SettingTextMigrateData') || "")
-            .setDesc(i18n.t('SettingTextMigrateDataDesc') || "")
-            .addButton(button => button
-                .setButtonText(i18n.t('SettingTextMigrateData') || "")
-                .onClick(async () => {
-                    await this.plugin.migrateData();
-                }
-                ))
-
-        new Setting(containerEl)
-            .setName(i18n.t('SettingTextConvertID') || "")
-            .setDesc(i18n.t('SettingTextConvertIDDesc') || "")
-            .addButton(button => button
-                .setButtonText(i18n.t('SettingTextConvertID') || "")
-                .onClick(async () => {
-                    await this.plugin.convertIDs();
-                }
-                ))
 
         new Setting(containerEl)
             .setName(i18n.t('SettingsOneLineDelimeter') || '')
@@ -204,11 +164,11 @@ export class AOSRSettingTab extends PluginSettingTab {
             .setName(i18n.t('SettingsDbPath') || '')
             .setDesc(i18n.t('SettingsDbPathDesc') || "")
             .addText(text => text
-                .setPlaceholder('.obsidian/aosr.db')
-                .setValue(GlobalSettings.AosrDbPath)
+                .setPlaceholder('.obsidian/obsidanki.db')
+                .setValue(GlobalSettings.ObsidankiDbPath)
                 .onChange(async (value) => {
                     if (value.length > 0 && !(/^\s*$/.test(value))) {
-                        GlobalSettings.AosrDbPath = value;
+                        GlobalSettings.ObsidankiDbPath = value;
                         await this.plugin.saveSettings();
                     } else {
                         new Notice(i18n.t('SettingsDbPathError') || "Cannot be empty or whitespace only.");
@@ -229,16 +189,6 @@ export class AOSRSettingTab extends PluginSettingTab {
                     })
             })
 
-        new Setting(containerEl)
-            .setName(i18n.t('SettingsShowHardCardsArrangement') || '')
-            .setDesc(i18n.t('SettingsShowHardCardsArrangementDesc') || "")
-            .addToggle(toggle => toggle
-                .setValue(GlobalSettings.ShowHardCardsArrangement)
-                .onChange(async (value) => {
-                    GlobalSettings.ShowHardCardsArrangement = value;
-                    await this.plugin.saveSettings();
-				}))
-
 		new Setting(containerEl)
 			.setName(i18n.t('SettingsNewLineAsSplitter') || '')
 			.setDesc(i18n.t('SettingsNewLineAsSplitterDesc') || "")
@@ -249,4 +199,13 @@ export class AOSRSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}))
 	}
+
+    hide(): void {
+        super.hide();
+        const exclusions = GlobalSettings.ExcludeWorkingPathesPattern;
+        if (exclusions !== this.exclusionsAtOpen) {
+            this.exclusionsAtOpen = exclusions;
+            void this.plugin.refreshTreeViews();
+        }
+    }
 }

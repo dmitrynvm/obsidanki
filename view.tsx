@@ -1,150 +1,84 @@
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import HourglassBottomIcon from '@mui/icons-material/HourglassBottom';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import SaveIcon from '@mui/icons-material/Save';
-import SkipNextIcon from '@mui/icons-material/SkipNext';
-import LoadingButton from '@mui/lab/LoadingButton';
-import { Box, Chip, Hidden, List, ListItem, ListItemButton, ListItemText, Paper, Stack } from "@mui/material";
-import Button from "@mui/material/Button";
-import CircularProgress from '@mui/material/CircularProgress';
-import LinearProgress from '@mui/material/LinearProgress';
-import Typography from '@mui/material/Typography';
 import { Pattern } from "Pattern";
 import { Arrangement, PatternIter, TAGNAME } from 'arrangement';
-import { findOutline } from 'card';
 import { IDComment } from 'cardHead';
 import i18n from 'i18next';
 import { RuleProperties } from 'json-rules-engine';
-import {log, getAppInstance, logTrueExpr} from 'main';
-import { MarkdownRenderComponent } from 'markdown';
-import { Component, EditorPosition, ItemView, MarkdownRenderChild, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian';
+import { log, getAppInstance } from 'main';
+import { Component, EditorPosition, ItemView, MarkdownRenderChild, MarkdownView, TFile, ViewStateResult, WorkspaceLeaf } from 'obsidian';
 import { openDeckPreview } from 'deckPreview';
+import { DeckTreeMenu } from 'deckTreeMenu';
 import * as React from "react";
 import { Root, createRoot } from "react-dom/client";
 import { I18nextProvider, Trans } from 'react-i18next';
-import { LearnEnum, LearnOpt, Operation, ReviewEnum, ReviewOpt } from "schedule";
-import { GlobalSettings } from 'setting';
+import { LearnEnum, LearnOpt, ReviewEnum, ReviewOpt } from "schedule";
+import { cardKeyScope, paneKeysActive, REVEAL_KEYS } from "keyboard";
+import { cardClickActive, preventCardMultiClickSelection } from "cardClick";
 
-function LinearProgressWithLabel(props: { value1: number, value2: number }) {
-	const value = (props.value1 / props.value2) * 100;
-	return (
-		<Box sx={{ display: 'flex', alignItems: 'center' }}>
-			<Box sx={{ width: '100%', mr: 1 }}>
-				<LinearProgress variant="determinate" value={value} />
-			</Box>
-			<Box sx={{ minWidth: 'min-content' }}>
-				<Typography variant="body2" color="var(--text-normal)">{`${props.value1}/${props.value2}`}</Typography>
-			</Box>
-		</Box>
-	);
-}
-
-export const VIEW_TYPE_REVIEW = "aosr-review-view"
+export const VIEW_TYPE_REVIEW = "obsidanki-review-view"
 
 type ReviewingProps = {
 	arrangement: Arrangement
-	goStage: (stage: ReviewStage) => void
+	goStage: (stage: ReviewStage, history?: boolean) => void
 	view: Component
 	arrangeName: string
-}
-
-// 未看到答案时大脑状态标记
-enum markEnum {
-	NOTSURE,
-	KNOWN,
-	FORGET,
+	isActive: () => boolean
 }
 
 type ReviewingState = {
 	nowPattern: Pattern | undefined
 	showAns: boolean
-	mark: markEnum
+	learn: boolean
 	patternIter: AsyncGenerator<PatternIter, boolean, unknown>
-	index: number
-	total: number
-	heading: string
-	fileName: string
 }
 
-
-type DelayButtonState = {
-	leftTime: number
-	loading: boolean
+// One row of the answer bar, left to right. Keys follow vim order (h j k l) and Anki's 1-4.
+type Grade = {
+	label: string
+	keys: string[]
+	review: ReviewEnum
+	learn: LearnEnum
 }
 
-type DelayButtonProps = {
-	initTime: number
-	onClick: React.MouseEventHandler<HTMLButtonElement>
-	color: "inherit" | "primary" | "secondary" | "success" | "error" | "info" | "warning" | undefined
-	size: "small" | "medium" | "large" | undefined
-	children?: React.ReactNode;
-}
+const GRADES: Grade[] = [
+	{ label: "GradeAgain", keys: ["h", "1"], review: ReviewEnum.FORGET, learn: LearnEnum.FORGET },
+	{ label: "GradeHard", keys: ["j", "2"], review: ReviewEnum.HARD, learn: LearnEnum.HARD },
+	{ label: "GradeGood", keys: ["k", "3", " ", "Enter"], review: ReviewEnum.FAIR, learn: LearnEnum.FAIR },
+	{ label: "GradeEasy", keys: ["l", "4"], review: ReviewEnum.EASY, learn: LearnEnum.EASY },
+]
 
-class DelayButton extends React.Component<DelayButtonProps, DelayButtonState> {
-	timeID: NodeJS.Timer
-	tick = () => {
-		if (this.state.leftTime <= 0) {
-			this.setState({
-				loading: false,
-			})
-			return
-		}
-		this.setState({
-			leftTime: this.state.leftTime - 0.1,
-		})
+// Anki-style compact interval: <1m, 45m, 3h, 2d, 1.7mo, 4.5y
+export function formatInterval(next: moment.Moment, now: moment.Moment = window.moment()): string {
+	const seconds = Math.max(0, next.diff(now, "seconds"))
+	if (seconds < 60) {
+		return "<1m"
 	}
-	componentDidMount(): void {
-		this.timeID = setInterval(this.tick, 100)
+	const minutes = Math.round(seconds / 60)
+	if (minutes < 60) {
+		return `${minutes}m`
 	}
-	componentWillUnmount(): void {
-		clearInterval(this.timeID)
+	const hours = Math.round(seconds / 3600)
+	if (hours < 24) {
+		return `${hours}h`
 	}
-	constructor(props: DelayButtonProps) {
-		super(props)
-		this.state = {
-			leftTime: this.props.initTime,
-			loading: true,
-		}
+	const days = Math.round(seconds / 86400)
+	if (days < 30) {
+		return `${days}d`
 	}
-	render(): React.ReactNode {
-		return <LoadingButton loading={this.state.loading} loadingPosition="start" startIcon={<SaveIcon />}
-			color={this.props.color}
-			size={this.props.size}
-			sx={{
-				":disabled": {
-					color: "rgba(128,128,128,0.5)"
-				}
-			}}
-			loadingIndicator={<CircularProgress size={16} variant="determinate" value={100 - this.state.leftTime / this.props.initTime * 100} />}
-			onClick={this.props.onClick}>{this.props.children}</LoadingButton>
+	if (days < 365) {
+		return `${Math.round(days / 3) / 10}mo`
 	}
+	return `${Math.round(days / 36.5) / 10}y`
 }
 
-const DURATION_CHECK = 0.3
-const DURATION_FORGET = 1.25
-const DURATION_HARD = 1.5
-const DURATION_WRONG = 1.75
-
-function removeMdExtension(str: string) {
-	if (str.endsWith('.md')) {
-		return str.slice(0, -3);
-	}
-	return str;
-}
-
-function replaceSlashWithArrow(str: string) {
-	return str.replace(/\//g, ' > ');
-}
-
-function findFileOutline(file: TFile, offset: number): string {
-	let cache = getAppInstance().metadataCache.getFileCache(file)
-	return findOutline(cache, offset)
-}
 
 class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 	initFlag: boolean
+	busy = false
 	lastPattern: Pattern | undefined
-	timer: NodeJS.Timeout | null = null;
+	mounted = false
+	rootRef = React.createRef<HTMLDivElement>()
+	keyWindow: Window | null = null
 	openUnpinnedFile = async (note: TFile) => {
 		let leaf: WorkspaceLeaf | undefined
 		if (this.props.view instanceof MarkdownRenderChild) {
@@ -162,25 +96,21 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 		if (!pattern) {
 			return
 		}
+		// Refresh offsets after a card ID was inserted or the source note was edited.
+		pattern = await this.props.arrangement.findLivePattern(pattern) ?? pattern
 		// 打开文件
 		let leaf = await this.openUnpinnedFile(pattern.card.note)
 		if (!(leaf.view instanceof MarkdownView)) {
 			return
 		}
 		let view = leaf.view
-		// 读取文件找到tag
+		// Locate the current note ID; untagged patterns retain their exact source offset.
 		let noteText = view.data
-		// TagID 是 #AOSR/xxx 规范写法；笔记里可能是注释写法 %%AOSR/xxx%%
-		let idText = pattern.TagID
+		let idText = IDComment(pattern.TagID)
 		let index = noteText.indexOf(idText)
-		if (index < 0) {
-			idText = IDComment(pattern.TagID)
-			index = noteText.indexOf(idText)
-		}
 		let length = idText.length
-		// 处理Tag不存在的情况
 		if (index < 0) {
-			index = pattern.card.indexBuff
+			index = pattern.sourceOffset
 			length = 0
 		}
 		// 换算位置
@@ -210,63 +140,134 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 		this.state = {
 			nowPattern: undefined,
 			showAns: false,
+			learn: false,
 			patternIter: this.props.arrangement.PatternSequence(this.props.arrangeName),
-			mark: markEnum.NOTSURE,
-			index: 0,
-			total: 1,
-			heading: "",
-			fileName: "",
 		}
 		this.initFlag = false
 	}
 	async componentDidMount() {
+		this.mounted = true
+		// Embedded decks stay mouse-only; pane keys follow the hosting window.
+		if (!(this.props.view instanceof MarkdownRenderChild)) {
+			this.keyWindow = this.rootRef.current?.ownerDocument.defaultView ?? window
+			this.keyWindow.addEventListener("keydown", this.onKeyDown, true)
+			this.keyWindow.addEventListener("keyup", this.onKeyUp, true)
+		}
 		if (!this.initFlag) {
 			this.initFlag = true
 			await this.next()
 		}
 	}
-	checkHeading = () => {
-		if (!this.state.nowPattern) {
+	componentWillUnmount() {
+		this.mounted = false
+		this.keyWindow?.removeEventListener("keydown", this.onKeyDown, true)
+		this.keyWindow?.removeEventListener("keyup", this.onKeyUp, true)
+	}
+	onKeyDown = (e: KeyboardEvent) => {
+		if (!paneKeysActive(this.rootRef.current, e)) {
 			return
 		}
-		let heading = findFileOutline(this.state.nowPattern.card.note, this.state.nowPattern.card.indexBuff)
-		this.setState({
-			heading: heading,
-		})
+		const action = this.keyAction(e.key)
+		if (!action) {
+			return
+		}
+		e.preventDefault()
+		e.stopPropagation()
+		if (e.repeat) {
+			return
+		}
+		action()
 	}
-	componentWillUnmount() {
-		if (this.timer) {
-			clearTimeout(this.timer); // 清理定时器
+	// A focused button would otherwise fire a second click on space/enter keyup
+	onKeyUp = (e: KeyboardEvent) => {
+		if (REVEAL_KEYS.includes(e.key) && paneKeysActive(this.rootRef.current, e)) {
+			e.preventDefault()
 		}
 	}
+	onCardClick = (event: React.MouseEvent<HTMLDivElement>) => {
+		if (!this.busy && cardClickActive(event)) {
+			const key = this.state.showAns && this.canGrade ? "l" : " "
+			this.keyAction(key)?.()
+		}
+	}
+	keyAction(key: string): (() => void) | null {
+		switch (key) {
+			case "q": case "Escape": return () => this.props.goStage(ReviewStage.Loading)
+			case "s": return this.skip
+			case "o": return () => this.openPatternFile(this.state.nowPattern)
+			case "O": return () => this.openPatternFile(this.lastPattern)
+		}
+		if (!this.state.nowPattern) {
+			return null
+		}
+		if (!this.state.showAns) {
+			return REVEAL_KEYS.includes(key) ? () => this.setState({ showAns: true }) : null
+		}
+		if (!this.canGrade) {
+			return REVEAL_KEYS.includes(key) ? this.skip : null
+		}
+		const grade = GRADES.find((g) => g.keys.includes(key))
+		return grade ? () => this.grade(grade) : null
+	}
+	// Upstream never grades the hard-cards list; it is browse-only
+	get canGrade(): boolean {
+		return this.props.arrangeName !== TAGNAME.HARDTAG
+	}
+	// Serializes clicks and keys so one card is never graded twice
+	async run(task: () => Promise<void>) {
+		if (this.busy || !this.mounted || !this.props.isActive()) {
+			return
+		}
+		this.busy = true
+		try {
+			await task()
+		} finally {
+			this.busy = false
+		}
+		const active = this.rootRef.current?.ownerDocument.activeElement
+		if (active instanceof HTMLElement && this.rootRef.current?.contains(active)) {
+			active.blur()
+		}
+	}
+	skip = () => {
+		this.run(this.next)
+	}
+	grade = (grade: Grade) => {
+		const pattern = this.state.nowPattern
+		if (!pattern || !this.state.showAns || !this.canGrade) {
+			return
+		}
+		const opt = this.state.learn ? new LearnOpt(grade.learn) : new ReviewOpt(grade.review)
+		this.run(async () => {
+			await pattern.SubmitOpt(opt)
+			await this.next()
+		})
+	}
 	next = async () => {
+		if (!this.mounted || !this.props.isActive()) return
 		this.lastPattern = this.state.nowPattern
 		let result = await this.state.patternIter.next()
+		if (!this.mounted || !this.props.isActive()) return
 		if (result.done) {
-			this.props.goStage(ReviewStage.Loading)
+			this.props.goStage(ReviewStage.Loading, false)
 			return
 		}
 		let patternIter : PatternIter = result.value;
 		let nextPattern : Pattern = patternIter.pattern;
-		let heading = findFileOutline(nextPattern.card.note, nextPattern.card.indexBuff)
-		if (heading == "") {
-			// 通过cache可能查不到缓存, 等一会再查
-			this.timer = setTimeout(this.checkHeading, 500);
-		}
-		await nextPattern.InitAosrID();
+		await nextPattern.InitObsidankiID();
+		if (!this.mounted || !this.props.isActive()) return
 		log(() => `Displaying id: ${nextPattern.TagID} 
 		at file: ${nextPattern.card.note.path} 
 		at index: ${patternIter.index} 
-		pattern: ${ ((nextPattern as any)?.text) ?? 'empty' }`);
-		this.setState({
-			nowPattern: nextPattern,
-			index: patternIter.index,
-			total: patternIter.total,
-			heading: heading,
-			fileName: replaceSlashWithArrow(removeMdExtension(nextPattern.card.note.path)),
-			showAns: false,
+		pattern: ${nextPattern.FrontText}`);
+		// Keep the grading lock until the next card is committed, not just queued for rendering.
+		await new Promise<void>((resolve) => {
+			this.setState({
+				nowPattern: nextPattern,
+				showAns: false,
+				learn: patternIter.learn,
+			}, resolve)
 		})
-		nextPattern.Pronounce()
 	}
 	PatternComponent = () => {
 		if (this.state.nowPattern) {
@@ -274,271 +275,92 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 		}
 		return <div></div>
 	}
-	async submit(opt: Operation) {
-		await this.state.nowPattern?.SubmitOpt(opt)
-		await this.next()
+	// Next-review interval for review-mode cards, learning progress for learn-mode cards
+	gradeHint(grade: Grade): string {
+		const schedule = this.state.nowPattern?.schedule
+		if (!schedule) {
+			return ""
+		}
+		if (this.state.learn) {
+			return `${(schedule.CalcLearnRate(grade.learn) * 100).toFixed(0)}%`
+		}
+		return formatInterval(schedule.CalcNextTime(grade.review))
 	}
-	getOptDate = (opt: ReviewEnum): string => {
-		let date = this.state.nowPattern?.schedule.CalcNextTime(opt)
-		return date?.fromNow() || ""
-	}
-	getOptRate = (opt: LearnEnum): string => {
+	renderBar() {
 		if (!this.state.nowPattern) {
-			return ""
+			return null
 		}
-		let rate = this.state.nowPattern.schedule.CalcLearnRate(opt)
-		rate = rate * 100
-		return `${rate.toFixed(0)}%`
-	}
-	getLastTime = (): string => {
-		if (this.state.nowPattern?.schedule?.LearnInfo.IsNew) {
-			return ""
+		if (!this.state.showAns || !this.canGrade) {
+			const label = this.state.showAns ? "NextCard" : "ShowAnswer"
+			const onClick = this.state.showAns ? this.skip : () => this.setState({ showAns: true })
+			return <div className="obsidanki-review-action">
+				<span className="obsidanki-review-hint" aria-hidden="true"></span>
+				<button className="obsidanki-button obsidanki-review-button" aria-keyshortcuts="Space Enter" onClick={onClick}>
+					<Trans i18nKey={label} />
+					<kbd className="obsidanki-review-key" aria-hidden="true">space</kbd>
+				</button>
+			</div>
 		}
-		let date = this.state.nowPattern?.schedule.LastTime
-		return date?.fromNow() || ""
-	}
-	markAs = (mark: markEnum) => {
-		this.setState({
-			showAns: true,
-			mark: mark,
+		return GRADES.map((grade) => {
+			const shortcuts = grade.keys.filter((k) => k.length === 1 && k !== " ")
+			return <div className="obsidanki-review-action" key={grade.label}>
+				<span className="obsidanki-review-hint">{this.gradeHint(grade)}</span>
+				<button className="obsidanki-button obsidanki-review-button" title={shortcuts.join(" · ")} aria-keyshortcuts={shortcuts.join(" ")} onClick={() => this.grade(grade)}>
+					<Trans i18nKey={grade.label} />
+					<kbd className="obsidanki-review-key" aria-hidden="true">{shortcuts[0]}</kbd>
+				</button>
+			</div>
 		})
 	}
 	render() {
-		return <Box>
-			<LinearProgressWithLabel value1={this.state.index} value2={this.state.total} />
-			<Stack flexWrap="wrap" useFlexGap direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ marginTop: 2, marginBottom: 2 }}>
-				<Stack direction={'row'} spacing={2} >
-					<Button onClick={() => { this.props.goStage(ReviewStage.Loading) }}> <ArrowBackIcon /> </Button>
-					<Hidden smUp>
-						<Button onClick={this.next} startIcon={<SkipNextIcon />}><Trans i18nKey="ButtonTextSkip" /></Button>
-					</Hidden>
-				</Stack>
-				<Stack direction={'row'} spacing={2} >
-					<Button onClick={() => this.openPatternFile(this.state.nowPattern)}><Trans i18nKey="ButtonTextOpenFile" /></Button>
-					<Button onClick={() => this.openPatternFile(this.lastPattern)}><Trans i18nKey="ButtonTextOpenLast" /></Button>
-				</Stack>
-				<Stack direction={'row'} spacing={2} >
-					{
-						this.getLastTime() &&
-						<Chip sx={{ color: 'var(--text-normal)', }} label={this.getLastTime()} />
-					}
-					{
-						this.state.nowPattern &&
-						<Chip sx={{ color: 'var(--text-normal)', }} label={
-							<>
-								<Trans i18nKey="ClipTextEase" />{" "}
-								{this.state.nowPattern?.schedule.Ease.toFixed(0)}
-							</>
-						} />
-					}
-				</Stack>
-				<Hidden smDown><Button onClick={this.next} startIcon={<SkipNextIcon />}><Trans i18nKey="ButtonTextSkip" /></Button></Hidden>
-			</Stack>
-			{
-				!GlobalSettings.HideContext && <>
-					<Box sx={{ marginTop: 2, marginBottom: 2 }}>
-						<Typography variant="h3">
-							{this.state.fileName}
-						</Typography>
-					</Box>
-					<Box sx={{ marginTop: 2, marginBottom: 2 }}>
-						<Typography variant="h6"><MarkdownRenderComponent markdown={this.state.heading} sourcePath={''} component={this.props.view} /></Typography>
-					</Box>
-				</>
-			}
-			<Box sx={{ minHeight: 135, marginTop: 2, marginBottom: 2 }}>
+		return <div className="obsidanki-ui obsidanki-review" ref={this.rootRef}>
+			<div className="obsidanki-review-card markdown-rendered" onMouseDown={preventCardMultiClickSelection} onClick={this.onCardClick}>
 				<this.PatternComponent></this.PatternComponent>
-			</Box>
-			<Box sx={{ marginTop: 2, marginBottom: 2 }}>
-				{
-					!this.state.showAns
-					&& [TAGNAME.NEWTAG, TAGNAME.ALLTAG, TAGNAME.REVIEWTAG, TAGNAME.LEARNTAG, TAGNAME.ALLRANDOM, TAGNAME.AHEAD].includes(this.props.arrangeName as TAGNAME)
-					&&
-					<Stack spacing={2} direction={{ xs: 'column', sm: 'row' }} sx={{ '& .MuiButton-root': { flex: { sm: 1 }, minWidth: 0, whiteSpace: 'normal' } }}>
-						<DelayButton initTime={GlobalSettings.WaitingTimeoutBase} color="error" size="large" onClick={() => this.markAs(markEnum.FORGET)}><Trans i18nKey="ButtonTextForget" /></DelayButton>
-						<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_CHECK} color="info" size="large" onClick={() => this.markAs(markEnum.NOTSURE)}><Trans i18nKey="ButtonNotSure" /></DelayButton>
-						<Button color="success" size="large" onClick={() => this.markAs(markEnum.KNOWN)}><Trans i18nKey="ButtonTextKnown" /></Button>
-					</Stack>
-				}
-				{
-					this.state.showAns
-					&& [TAGNAME.NEWTAG, TAGNAME.ALLTAG, TAGNAME.REVIEWTAG, TAGNAME.ALLRANDOM, TAGNAME.AHEAD].includes(this.props.arrangeName as TAGNAME)
-					&&
-					<Stack spacing={2} direction={{ xs: 'column', sm: 'row' }} sx={{ '& .MuiButton-root': { flex: { sm: 1 }, minWidth: 0, whiteSpace: 'normal' } }}>
-						{
-							this.state.mark == markEnum.FORGET &&
-							<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_FORGET} color="error" size="large" onClick={() => this.submit(new ReviewOpt(ReviewEnum.FORGET))}><Trans i18nKey="ButtonTextForget2" /> {this.getOptDate(ReviewEnum.FORGET)}</DelayButton>
-						}
-						{
-							this.state.mark == markEnum.NOTSURE &&
-							<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_HARD} onClick={() => this.submit(new ReviewOpt(ReviewEnum.HARD))} color="error" size="large"><Trans i18nKey="ButtonTextHard" /> {this.getOptDate(ReviewEnum.HARD)}</DelayButton>
-
-						}
-						{
-							this.state.mark == markEnum.NOTSURE &&
-							<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_CHECK} color="info" size="large" onClick={() => this.submit(new ReviewOpt(ReviewEnum.FAIR))}><Trans i18nKey="ButtonTextFair" /> {this.getOptDate(ReviewEnum.FAIR)}</DelayButton>
-						}
-						{
-							this.state.mark == markEnum.KNOWN &&
-							<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_WRONG} onClick={() => this.submit(new ReviewOpt(ReviewEnum.FORGET))} color="error" size="large"><Trans i18nKey="ButtonTextWrong" /> {this.getOptDate(ReviewEnum.FORGET)}</DelayButton>
-						}
-						{
-							this.state.mark == markEnum.KNOWN &&
-							<Button color="success" size="large" onClick={() => this.submit(new ReviewOpt(ReviewEnum.EASY))}><Trans i18nKey="ButtonTextEasy" /> {this.getOptDate(ReviewEnum.EASY)}</Button>
-						}
-					</Stack>
-				}
-				{
-					this.state.showAns && this.props.arrangeName === TAGNAME.LEARNTAG &&
-					<Stack spacing={2} direction={{ xs: 'column', sm: 'row' }} sx={{ '& .MuiButton-root': { flex: { sm: 1 }, minWidth: 0, whiteSpace: 'normal' } }}>
-						{
-							this.state.mark === markEnum.FORGET &&
-							<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_FORGET} color="error" size="large" onClick={() => this.submit(new LearnOpt(LearnEnum.FORGET))}><Trans i18nKey="ButtonTextForget2" /> {this.getOptRate(LearnEnum.FORGET)}</DelayButton>
-						}
-						{
-							this.state.mark === markEnum.NOTSURE &&
-							<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_HARD} color="error" size="large" onClick={() => this.submit(new LearnOpt(LearnEnum.HARD))}><Trans i18nKey="ButtonTextHard" /> {this.getOptRate(LearnEnum.HARD)}</DelayButton>
-						}
-						{
-							this.state.mark === markEnum.NOTSURE &&
-							<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_CHECK} color="info" size="large" onClick={() => this.submit(new LearnOpt(LearnEnum.FAIR))}><Trans i18nKey="ButtonTextFair" /> {this.getOptRate(LearnEnum.FAIR)}</DelayButton>
-						}
-						{
-							this.state.mark === markEnum.KNOWN &&
-							<DelayButton initTime={GlobalSettings.WaitingTimeoutBase * DURATION_WRONG} color="error" size="large" onClick={() => this.submit(new LearnOpt(LearnEnum.FORGET))}><Trans i18nKey="ButtonTextWrong" /> {this.getOptRate(LearnEnum.FORGET)}</DelayButton>
-						}
-						{
-							this.state.mark === markEnum.KNOWN &&
-							<Button color="info" size="large" onClick={() => this.submit(new LearnOpt(LearnEnum.EASY))}><Trans i18nKey="ButtonTextEasy" /> {this.getOptRate(LearnEnum.EASY)}</Button>
-						}
-					</Stack>
-				}
-			</Box>
-		</Box>
+			</div>
+			<div className="obsidanki-review-bar">
+				{this.renderBar()}
+			</div>
+		</div>
 	}
 }
 
 
-class LoadingComponent extends React.Component<any, any> {
+class LoadingComponent extends React.Component {
 	render() {
 		return <HourglassBottomIcon />
 	}
 }
 
-type MaindeskProps = {
+// Embedded rule decks stay mouse-only; the main pane owns the keyboard tree.
+function EmbeddedMenu({ arrangement, onStudy }: {
 	arrangement: Arrangement
-	goStage: (stage: ReviewStage) => void
-	setArrangement: (arrangeName: string) => void
-}
-
-type MaindeskState = {
-
-}
-
-interface ReviewPaperProps {
-	arrangement: Arrangement;
-	setArrangement: (name: string) => void;
-	goStage: (stage: ReviewStage) => void;
-}
-
-interface ReviewPaperStates {
-
-}
-
-// 「所有内容」和「所有内容(随机)」并排显示时共用的样式
-const START_ITEM_SX = {
-	justifyContent: 'center',
-	textTransform: 'none',
-	color: 'var(--text-normal)',
-	border: '1px solid var(--background-modifier-border)',
-	borderRadius: 1,
-	boxSizing: 'border-box',
-}
-
-// 右侧计数块：点击打开该牌组的预览 tab
-const COUNT_SX = {
-	...START_ITEM_SX,
-	flexShrink: 0,
-	minWidth: 56,
-	paddingX: 1,
-}
-
-class ReviewPaperComponent extends React.Component<ReviewPaperProps, ReviewPaperStates> {
-	constructor(props: ReviewPaperProps) {
-		super(props)
-	}
-	render(): React.ReactNode {
-		let emptyReview = this.props.arrangement.isOnlyAllTag()
-		const items = this.props.arrangement.ArrangementList()
-		const allTags = [TAGNAME.ALLTAG, TAGNAME.ALLRANDOM]
-		const singleItems = items.filter((value) => allTags.indexOf(value.Name) < 0)
-		const allItems = items.filter((value) => allTags.indexOf(value.Name) >= 0)
-
-		const pick = (name: string) => {
-			this.props.setArrangement(name);
-			this.props.goStage(ReviewStage.Reviewing);
-		}
-
-		// 一个条目 = 左侧可点的标签按钮 + 右侧纯展示的计数块
-		const renderRow = (name: string, display: string, count: number) => (
-			<Stack key={name} direction="row" spacing={1} sx={{ boxSizing: 'border-box' }}>
-				<Button
-					onClick={() => pick(name)}
-					sx={{ ...START_ITEM_SX, flex: 1, minWidth: 0, whiteSpace: 'normal' }}
-				>
-					{display}
-				</Button>
-				<Button sx={COUNT_SX} onClick={() => openDeckPreview(this.props.arrangement, name, display)}>
-					{count}
-				</Button>
-			</Stack>
-		)
-
-		return (
-			<Paper sx={{
-				color: 'var(--text-normal)',
-				bgcolor: 'var(--background-primary)',
-				margin: 2,
-				boxSizing: 'border-box',
-				maxWidth: '100%',
-			}}>
-				{items.length !== 0 && <>
-					<Typography variant="h6" sx={{ padding: 2 }}>
-						<Trans i18nKey="StartReview" />
-					</Typography>
-					<Stack spacing={1} sx={{ paddingX: 2, paddingBottom: 2, boxSizing: 'border-box' }}>
-						{ singleItems.map((value) => renderRow(value.Name, value.Display, value.Count)) }
-						{
-							allItems.length > 0 &&
-							<Stack direction="row" spacing={1} sx={{ boxSizing: 'border-box' }}>
-								{
-									allItems.map((value) => (
-										<Button
-											key={value.Name}
-											onClick={() => pick(value.Name)}
-											sx={{ ...START_ITEM_SX, flex: 1, minWidth: 0, whiteSpace: 'normal' }}
-										>
-											{value.Display}
-										</Button>
-									))
-								}
-								<Button sx={COUNT_SX} onClick={() => openDeckPreview(this.props.arrangement, allItems[0].Name, allItems[0].Display)}>
-									{allItems[0].Count}
-								</Button>
-							</Stack>
-						}
-					</Stack>
-				</>
-				}
-				{
-					emptyReview &&
-					<Box sx={{ padding: 2 }}>
-						<Trans i18nKey="StartTextEmpty" />
-					</Box>
-				}
-			</Paper>
-		);
-	}
+	onStudy: (rule: RuleProperties | null) => Promise<void>
+}) {
+	const study = arrangement.studyItem()
+	const total = arrangement.patternsFor(TAGNAME.ALLTAG).length
+	const next = arrangement.nextDue()
+	const stats = arrangement.stats()
+	return <div className="obsidanki-ui obsidanki-start">
+		{study ? <div className="obsidanki-start-row is-primary">
+			<button className="obsidanki-start-go" onClick={() => onStudy(arrangement.rule)}>
+				<span className="obsidanki-start-label">{study.Display}</span>
+			</button>
+			<button className="obsidanki-start-count" title={`${i18n.t("DeckPreviewTab")}: ${study.Display}`} aria-label={`${i18n.t("DeckPreviewTab")}: ${study.Display} (${study.Count})`} onClick={() => openDeckPreview(arrangement.rule, TAGNAME.STUDY, study.Display)}>{study.Count}</button>
+		</div> : <div className="obsidanki-start-status">
+			{i18n.t(total > 0 ? "StartCaughtUp" : "StartNoCards")}
+			{total > 0 && next && <span className="obsidanki-start-next">{i18n.t("StartNextDue", { interval: formatInterval(next) })}</span>}
+		</div>}
+		{(stats.ReviewCount > 0 || stats.NewCount > 0 || stats.LearnCount > 0) &&
+			<div className="obsidanki-start-today">{i18n.t("StartToday", { review: stats.ReviewCount, new: stats.NewCount, learn: stats.LearnCount })}</div>}
+		{total > 0 && <div className="obsidanki-start-decks">
+			<div className="obsidanki-start-row">
+				<button className="obsidanki-start-go" onClick={() => openDeckPreview(arrangement.rule, TAGNAME.ALLTAG, i18n.t("StartBrowse"))}>
+					<span className="obsidanki-start-label">{i18n.t("StartBrowse")}</span>
+				</button>
+				<button className="obsidanki-start-count" title={`${i18n.t("DeckPreviewTab")}: ${i18n.t("StartBrowse")}`} aria-label={`${i18n.t("DeckPreviewTab")}: ${i18n.t("StartBrowse")} (${total})`} onClick={() => openDeckPreview(arrangement.rule, TAGNAME.ALLTAG, i18n.t("StartBrowse"))}>{total}</button>
+			</div>
+		</div>}
+	</div>
 }
 
 // interface DeckSettingProps {
@@ -628,60 +450,13 @@ class ReviewPaperComponent extends React.Component<ReviewPaperProps, ReviewPaper
 // 	}
 // }
 
-class MaindeskComponent extends React.Component<MaindeskProps, MaindeskState> {
-	constructor(props: any) {
-		super(props)
-	}
-	render(): React.ReactNode {
-		let showStats: boolean = false
-		let stats = this.props.arrangement.stats()
-		if (stats.NewCount > 0 || stats.LearnCount > 0 || stats.ReviewCount > 0) {
-			showStats = true
-		}
-		return <Box>
-			<Stack spacing={2}>
-				<Button onClick={() => {
-					this.props.goStage(ReviewStage.Loading)
-				}} ><RefreshIcon /></Button>
-				<ReviewPaperComponent
-					arrangement={this.props.arrangement}
-					setArrangement={this.props.setArrangement}
-					goStage={this.props.goStage}
-				/>
-				{
-					showStats &&
-					<Paper sx={{
-						color: 'var(--text-normal)',
-						bgcolor: 'var(--background-primary)',
-						margin: 2,
-					}}>
-						<Typography variant="h6" sx={{ padding: 2 }}>
-							<Trans i18nKey="TodayStats" />
-						</Typography>
-						<List>
-							<ListItem>
-								<ListItemText primary={<><Trans i18nKey="StartTextNew" /> : {stats.NewCount}</>}></ListItemText>
-							</ListItem>
-							<ListItem>
-								<ListItemText primary={<><Trans i18nKey="StartTextReview" /> : {stats.ReviewCount}</>}> </ListItemText>
-							</ListItem>
-							<ListItem>
-								<ListItemText primary={<><Trans i18nKey="StartTextLearn" /> : {stats.LearnCount}</>}> </ListItemText>
-							</ListItem>
-							<ListItem>
-								<ListItemText primary={<><Trans i18nKey="StartTextHard" /> : {stats.HardCount}</>}> </ListItemText>
-							</ListItem>
-						</List>
-					</Paper>
-				}
-			</Stack>
-		</Box>
-	}
-}
-
 type ReviewProps = {
-	view: Component
+	view: ReviewView | MarkdownRenderChild
 	rule: RuleProperties | null
+	route?: ReviewNavigationState["route"]
+	onStudy?: (rule: RuleProperties | null) => Promise<void>
+	onMenu?: (history: boolean) => Promise<void>
+	isCurrent?: () => boolean
 }
 
 enum ReviewStage {
@@ -693,109 +468,149 @@ enum ReviewStage {
 type ReviewState = {
 	stage: ReviewStage
 	arrangement: Arrangement
-	arrangeName: string
 }
 
 class ReviewComponent extends React.Component<ReviewProps, ReviewState> {
-	private syncFlag: boolean;
-	async sync() {
-		if (this.syncFlag) {
-			return
+	private mounted = false
+	private loadVersion = 0
+	isActive = () => this.mounted && (this.props.isCurrent?.() ?? true)
+	async sync(rule: RuleProperties | null = this.props.rule, stage = ReviewStage.Maindesk) {
+		const version = ++this.loadVersion
+		const arrangement = new Arrangement()
+		await arrangement.init(rule)
+		if (this.isActive() && version === this.loadVersion) {
+			this.setState({ arrangement, stage })
 		}
-		this.syncFlag = true
-		let arrangement = this.state.arrangement
-		await arrangement.init(this.props.rule)
-		this.setState({
-			arrangement: arrangement
-		})
-		this.setState({
-			stage: ReviewStage.Maindesk
-		})
-		this.syncFlag = false
 	}
 	componentDidMount() {
-		this.sync()
+		this.mounted = true
+		void this.sync(this.props.rule, this.props.route === "study" ? ReviewStage.Reviewing : ReviewStage.Maindesk)
+	}
+	componentWillUnmount() {
+		this.mounted = false
+		this.loadVersion++
 	}
 	constructor(props: ReviewProps) {
 		super(props)
-		this.syncFlag = false
 		this.state = {
 			stage: ReviewStage.Loading,
 			arrangement: new Arrangement(),
-			arrangeName: "",
 		}
 	}
-	goStage = (stage: ReviewStage) => {
-		this.setState({
-			stage: stage
-		})
-		if (stage == ReviewStage.Loading) {
-			this.sync()
+	goStage = (stage: ReviewStage, history = true) => {
+		if (!this.isActive()) return
+		if (stage === ReviewStage.Loading && this.props.onMenu) {
+			void this.props.onMenu(history)
+			return
 		}
+		this.setState({ stage })
+		if (stage === ReviewStage.Loading) void this.sync()
 	}
-	setArrangement = (arrangeName: string) => {
-		this.setState({
-			arrangeName: arrangeName
-		})
+	startDeck = async (rule: RuleProperties | null) => {
+		if (!this.isActive()) return
+		if (this.props.onStudy) {
+			await this.props.onStudy(rule)
+			return
+		}
+		this.setState({ stage: ReviewStage.Loading })
+		await this.sync(rule, ReviewStage.Reviewing)
 	}
 	render(): React.ReactNode {
-		if (this.state.stage == ReviewStage.Loading) {
-			return <LoadingComponent></LoadingComponent>
-		}
-		if (this.state.stage == ReviewStage.Maindesk) {
-			return <MaindeskComponent
-				setArrangement={this.setArrangement}
-				goStage={this.goStage}
-				arrangement={this.state.arrangement}
-			></MaindeskComponent>
-		}
+		// The review screen owns the whole pane; the deck list keeps the reading-view layout
 		if (this.state.stage == ReviewStage.Reviewing) {
 			return <Reviewing
-				arrangeName={this.state.arrangeName}
+				arrangeName={TAGNAME.STUDY}
 				arrangement={this.state.arrangement}
 				goStage={this.goStage}
 				view={this.props.view}
+				isActive={this.isActive}
 			></Reviewing>
 		}
+		return <div className="markdown-preview-view markdown-rendered is-readable-line-width allow-fold-headings">
+			<div className="markdown-preview-sizer markdown-preview-section" style={{ paddingBottom: `${window.innerHeight / 2}px` }}>
+				{
+					this.state.stage == ReviewStage.Loading
+						? <LoadingComponent></LoadingComponent>
+						: this.props.view instanceof MarkdownRenderChild
+							? <EmbeddedMenu arrangement={this.state.arrangement} onStudy={this.startDeck} />
+							: <DeckTreeMenu arrangement={this.state.arrangement} onStudy={this.startDeck} onCollapsedChange={this.props.view.saveTreeState} />
+				}
+			</div>
+		</div>
 	}
 }
 
 
-type props = {
-	view: Component
-	rule: RuleProperties | null
-}
 
-export function App(props: props) {
-	let halfPageHeight = window.innerHeight / 2
+export function App(props: ReviewProps) {
 	return (
-		<div className="markdown-preview-view markdown-rendered is-readable-line-width allow-fold-headings">
-			<div className="markdown-preview-sizer markdown-preview-section" style={{ paddingBottom: `${halfPageHeight}px` }}>
-				<I18nextProvider i18n={i18n}>
-					<ReviewComponent view={props.view} rule={props.rule} ></ReviewComponent>
-				</I18nextProvider>
-			</div>
-		</div>
+		<I18nextProvider i18n={i18n}>
+			<ReviewComponent {...props} />
+		</I18nextProvider>
 	);
 }
 
-// 卡片复习视图
+type ReviewNavigationState = {
+	route: "tree" | "study"
+	rule: RuleProperties | null
+}
+
+// Automatic study exhaustion replaces the current route instead of adding history.
+// This input-only flag is deliberately absent from getState() snapshots.
+type ReviewNavigationInput = Partial<ReviewNavigationState> & { history?: boolean }
+
 export class ReviewView extends ItemView {
-	root: Root
+	navigation = true
+	scope = cardKeyScope(this)
+	root: Root | null = null
+	private state: ReviewNavigationState = { route: "tree", rule: null }
+	private stateVersion = 0
+
+	constructor(leaf: WorkspaceLeaf, readonly saveTreeState: (nodes: string[]) => Promise<void>) {
+		super(leaf)
+	}
+
 	getViewType(): string {
 		return VIEW_TYPE_REVIEW
 	}
 	getDisplayText(): string {
-		return "Aosr"
+		return "Obsidanki"
 	}
-	async onload() {
-		let rootDiv = this.containerEl.children[1].createDiv()
-		this.root = createRoot(rootDiv);
-		this.root.render(
-			<App view={this} rule={null}></App>
+	getState(): ReviewNavigationState {
+		return { ...this.state }
+	}
+	async setState(state: ReviewNavigationInput | undefined, result: ViewStateResult): Promise<void> {
+		const next: ReviewNavigationState = state?.route === "study"
+			? { route: "study", rule: state.rule ?? null }
+			: { route: "tree", rule: null }
+		result.history = state?.history !== false && (this.state.route !== next.route ||
+			JSON.stringify(this.state.rule) !== JSON.stringify(next.rule))
+		this.state = next
+		const version = ++this.stateVersion
+		await super.setState(next, result)
+		if (version === this.stateVersion) this.draw()
+	}
+	async onOpen(): Promise<void> {
+		this.root = createRoot(this.contentEl.createDiv({ cls: "obsidanki-root" }))
+		this.draw()
+	}
+	private draw(): void {
+		const version = this.stateVersion
+		this.root?.render(
+			<App key={version} view={this} rule={this.state.rule} route={this.state.route}
+				isCurrent={() => version === this.stateVersion}
+				onStudy={(rule) => this.leaf.setViewState({
+					type: VIEW_TYPE_REVIEW, active: true, state: { route: "study", rule },
+				})}
+				onMenu={(history) => this.leaf.setViewState({
+					type: VIEW_TYPE_REVIEW, active: true, state: { route: "tree", history },
+				})}
+			/>
 		)
 	}
-	onunload(): void {
-		this.root.unmount()
+	async onClose(): Promise<void> {
+		this.stateVersion++
+		this.root?.unmount()
+		this.root = null
 	}
 }

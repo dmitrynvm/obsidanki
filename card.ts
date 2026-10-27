@@ -1,20 +1,14 @@
-import { AnnotationObject, AnnotationWrapper } from 'annotationParse';
 import { UpdateCardIDTag } from 'cardHead';
 import { CachedMetadata, TFile } from 'obsidian';
 import { CardSchedule, PatternSchedule } from 'schedule';
-import { ParserCollection } from './ParserCollection';
+import { ParserCollection, PatternParser } from './ParserCollection';
 import { Pattern } from './Pattern';
 import { cyrb53 } from './hash';
 import { DatabaseHelper } from 'db';
 import { getAppInstance } from 'main';
 import { GlobalSettings } from "./setting";
 
-// 卡片
-// 卡片由源码和注释两部分组成，
-// 源码是卡片的正文，书写的内容
-// 注释是卡片的附属信息，存储额外的信息
-// 卡片负责存储和解析md文件中卡片的内容
-// 包括如何定义卡片的元信息以及附属信息
+// A card parses note content and keeps its schedules in the database.
 export interface Card {
 	// 获取卡片所属文件
 	get note(): TFile
@@ -24,6 +18,7 @@ export interface Card {
 	get cardText(): string
 	// 获取源码
 	get bodyList(): string[]
+	get bodyOffsets(): number[]
 	// 获取卡片模式
 	get patterns(): Pattern[]
 	// 获取卡片偏移量
@@ -40,12 +35,12 @@ export interface Card {
 }
 
 interface commitType {
-	annotation?: boolean
+	schedules?: boolean
 	ID?: boolean
 }
 
-export function NewCard(cardText: string, content: string, annotation: string, cardID: string, index: number, note: TFile, cache: CachedMetadata | null): Card {
-	return new defaultCard(cardText, content, annotation, cardID, index, note, cache)
+export function NewCard(cardText: string, content: string, cardID: string, index: number, note: TFile, cache: CachedMetadata | null, parser: PatternParser = ParserCollection.getInstance()): Card {
+	return new defaultCard(cardText, content, cardID, index, note, cache, parser)
 }
 
 // 更新原文
@@ -102,14 +97,13 @@ export function findOutline(cache: CachedMetadata | null, offset: number): strin
 
 // 默认卡片的实现
 class defaultCard implements Card {
-	annotationWrapperStr: string = ""
 	bodyList: string[]
+	bodyOffsets: number[]
 	note: TFile
 	originalID: string = ""
 	patterns: Pattern[];
 	schedules: CardSchedule
 	indexBuff: number
-	annotationObj: AnnotationObject
 	updateList: updateInfo[];
 	cardText: string
 	content: string
@@ -120,8 +114,7 @@ class defaultCard implements Card {
 	fileCache: CachedMetadata | null
 	outline: string
 
-	// 1为source 2为注释
-	constructor(cardText: string, content: string, annotationWrapperStr: string, cardID: string, index: number, note: TFile, cache: CachedMetadata | null) {
+	constructor(cardText: string, content: string, cardID: string, index: number, note: TFile, cache: CachedMetadata | null, parser: PatternParser) {
 		let tags = extractStrings(cardText)
 		this.tags = tags
 		this.fileCache = cache
@@ -135,33 +128,28 @@ class defaultCard implements Card {
 				? defaultCard.bodySplitRegWithSpaces
 				: defaultCard.bodySplitReg
 		);
+		let cursor = 0
+		const contentOffset = index + cardText.length - content.length
+		this.bodyOffsets = this.bodyList.map(body => {
+			const start = content.indexOf(body, cursor)
+			cursor = start + body.length
+			return contentOffset + start
+		})
 		this.note = note
 		this.schedules = new CardSchedule()
 		this.originalID = cardID || ""
-		this.annotationWrapperStr = annotationWrapperStr || ""
-		let annotationStr = AnnotationWrapper.deWrapper(annotationWrapperStr)
-		this.initAnnotation(annotationStr);
+		this.loadSchedules();
 
-		let parser = ParserCollection.getInstance()
 		this.patterns = parser.Parse(this)
 	}
 	getSchedules(): CardSchedule {
 		return this.schedules
 	}
-	private initAnnotation(annotationStr: string) {
-		// 尝试使用DatabaseHelper查找对应的文档，如果能找到，优先使用该文档
+	private loadSchedules() {
 		let db = DatabaseHelper.getInstance()
-		let findFlag = false
 		let doc = db.query(this.ID)
 		if (doc) {
 			this.schedules.setData(doc.CardSchedules)
-			findFlag = true
-		}
-
-		// 如果找不到，使annotationStr
-		if (findFlag === false) {
-			this.annotationObj = AnnotationObject.Parse(annotationStr);
-			this.schedules = this.annotationObj.cardSchedule
 		}
 	}
 	updateFile(info: updateInfo) {
@@ -177,34 +165,14 @@ class defaultCard implements Card {
 		}
 		return cyrb53(this.cardText, 5);
 	}
-	private updateAnnotationOld(fileText: string): string {
-		let newAnnotation = AnnotationObject.Stringify(this.annotationObj)
-		newAnnotation = AnnotationWrapper.enWrapper(this.ID, newAnnotation, "AOSRDATA")
-		if (this.annotationWrapperStr?.length > 0) {
-			fileText = fileText.replace(this.annotationWrapperStr, () => {
-				return newAnnotation
-			})
-		} else {
-			if (fileText.at(-1) != "\n") {
-				fileText += "\n" + "\n"
-			} else if (fileText.at(-2) != "\n") {
-				fileText += "\n"
-			}
-			fileText = fileText + newAnnotation
-		}
-		return fileText
-	}
-
-	// 更新注释块内容
-	private updateAnnotation() {
-		// 使用新的数据库方式写入数据
-		let db = DatabaseHelper.getInstance()
-		db.insertOrUpdate(this.ID, this.schedules)
-		db.commit()
-	}
 	async commitFile(committype: commitType) {
-		// 首先读取原文
-		let fileText = await getAppInstance().vault.read(this.note)
+		// Plain vocabulary has a stable note identity and no IDs to insert.
+		if (!committype.ID || this.idGenFlag || (this.originalID && this.updateList.length === 0)) {
+			if (committype.schedules) await DatabaseHelper.getInstance().saveReview(this.ID, this.schedules)
+			return
+		}
+		const originalText = await getAppInstance().vault.read(this.note)
+		let fileText = originalText
 		if (committype.ID == true && this.idGenFlag == false) {
 			// 如果卡片内容被更改, 则阻止添加ID, 因为这会破坏卡片格式
 			if (fileText.contains(this.cardText)) {
@@ -227,13 +195,9 @@ class defaultCard implements Card {
 				this.idGenFlag = true // 确保只添加一次
 			}
 		}
-		// 更新注释段内容
-		if (committype.annotation == true) {
-			// fileText = this.updateAnnotation(fileText)
-			this.updateAnnotation()
-		}
 		// 提交变更
-		await getAppInstance().vault.modify(this.note, fileText)
+		if (fileText !== originalText) await getAppInstance().vault.modify(this.note, fileText)
+		if (committype.schedules) await DatabaseHelper.getInstance().saveReview(this.ID, this.schedules)
 	}
 }
 

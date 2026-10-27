@@ -13,6 +13,7 @@ export type PatternProps ={
 // 卡片的展示模式
 export abstract class Pattern {
 	TagID: string;
+	readonly sourceOffset: number;
 	private pcard: Card;
 	get schedule(): PatternSchedule {
 		return this.card.getSchedule(this.TagID)
@@ -20,19 +21,19 @@ export abstract class Pattern {
 	get card(): Card {
 		return this.pcard
 	}
-	constructor(card:Card, id:string) {
+	constructor(card:Card, id:string, sourceOffset:number) {
 		this.pcard = card
 		this.TagID = id
+		this.sourceOffset = sourceOffset
 	}
-	Pronounce() {}
 	abstract SubmitOpt(opt: Operation): Promise<void>;
 	abstract Component(props:PatternProps): JSX.Element;
 	abstract insertPatternID(): void;
 	// 纯正面文本（不含答案），供预览用
 	abstract get FrontText(): string;
-	// 答案文本，供预览悬浮时显示
+	// Answer text used by card browsing and search.
 	abstract get BackText(): string;
-	async InitAosrID() {
+	async InitObsidankiID() {
 		this.insertPatternID()
 		await this.card.commitFile({ID:true})
 	}

@@ -7,7 +7,7 @@ import { Pattern } from "Pattern"
 import { defaultSchedule } from "schedule"
 import { GlobalSettings } from "setting"
 
-class ArrangementItem {
+export class ArrangementItem {
     Name: TAGNAME
     Count: number
     Display: string
@@ -24,15 +24,14 @@ export enum TAGNAME {
     LEARNTAG = "learn",
     HARDTAG = "hard",
     ALLTAG = "all",
-    ALLRANDOM = "all_random",
     AHEAD = "ahead",
+    STUDY = "study",
 }
 
 export class Stats {
     NewCount: number
     ReviewCount: number
     LearnCount: number
-    HardCount: number
 }
 
 export function hardPatterns(p: Pattern[]): Pattern[] {
@@ -42,7 +41,7 @@ export function hardPatterns(p: Pattern[]): Pattern[] {
     })
 }
 
-function allRandomPatterns(p: Pattern[]): Pattern[] {
+function shuffled(p: Pattern[]): Pattern[] {
     for (let i = p.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
         const tmp = p[i]
@@ -67,25 +66,18 @@ export class PatternIter {
     pattern: Pattern
     index: number
     total: number
-    constructor(pattern: Pattern, index: number, total: number) {
+    learn: boolean
+    constructor(pattern: Pattern, index: number, total: number, learn: boolean) {
         this.pattern = pattern
         this.index = index
         this.total = total
+        this.learn = learn
     }
 }
 
 abstract class ArrangementBase {
     abstract PatternSequence(Name: string): AsyncGenerator<PatternIter, boolean, unknown>
-    abstract ArrangementList(): ArrangementItem[]
     abstract stats(): Stats
-    isOnlyAllTag(): boolean {
-        for (const item of this.ArrangementList()) {
-            if (item.Name !== TAGNAME.ALLTAG && item.Name !== TAGNAME.ALLRANDOM && item.Name !== TAGNAME.AHEAD) {
-                return false;
-            }
-        }
-        return true;
-    }
 }
 
 function isToday(date: moment.Moment): boolean {
@@ -95,12 +87,14 @@ function isToday(date: moment.Moment): boolean {
 }
 
 export class Arrangement extends ArrangementBase {
+    rule: RuleProperties | null = null
     private allPattern: Pattern[]
     private newPattern: Pattern[]
     private needReviewPattern: Pattern[]
     private needLearn: Pattern[]
     private hardPatterns: Pattern[]
-    private allRandomPatterns: Pattern[]
+    // All Contents reviews in a fresh shuffle on every load; its preview keeps file order (allPattern)
+    private allShuffled: Pattern[]
     private aheadPatterns: Pattern[]
     // private wait:Pattern[]
     private watcher: CardsWatcher
@@ -110,10 +104,11 @@ export class Arrangement extends ArrangementBase {
         this.newPattern = []
         this.needReviewPattern = []
         this.hardPatterns = []
-        this.allRandomPatterns = []
+        this.allShuffled = []
         this.aheadPatterns = []
     }
     async init(rule: RuleProperties | null) {
+        this.rule = rule
         let search = NewCardSearch()
         let allcards = await search.search()
         this.allPattern = []
@@ -154,34 +149,21 @@ export class Arrangement extends ArrangementBase {
         stats.LearnCount = learnCount
         stats.NewCount = newCount
         stats.ReviewCount = reviewCount
-        stats.HardCount = hardPatterns(this.allPattern).length;
         return stats
     }
-    ArrangementList(): ArrangementItem[] {
-        let retlist: ArrangementItem[] = []
-        if (this.newPattern.length > 0) {
-            retlist.push(new ArrangementItem(TAGNAME.NEWTAG, this.newPattern.length, i18next.t('StartTextNew')))
+    // Study runs everything due in one session: due reviews, then reinforce, then new
+    private studyPatterns(): Pattern[] {
+        return [...this.needReviewPattern, ...this.needLearn, ...this.newPattern]
+    }
+    studyItem(): ArrangementItem | undefined {
+        const n = this.studyPatterns().length
+        if (n > 0) {
+            return new ArrangementItem(TAGNAME.STUDY, n, i18next.t('StartStudy'))
         }
-        if (this.needReviewPattern.length > 0) {
-            retlist.push(new ArrangementItem(TAGNAME.REVIEWTAG, this.needReviewPattern.length, i18next.t('StartTextReview')))
-        }
-        if (this.needLearn.length > 0) {
-            retlist.push(new ArrangementItem(TAGNAME.LEARNTAG, this.needLearn.length, i18next.t('StartTextLearn')))
-        }
-        if (this.aheadPatterns.length > 0) {
-            retlist.push(new ArrangementItem(TAGNAME.AHEAD, this.aheadPatterns.length, i18next.t('StartTextAhead')))
-        }
-        if (this.hardPatterns.length > 0
-            && GlobalSettings.ShowHardCardsArrangement) {
-            retlist.push(new ArrangementItem(TAGNAME.HARDTAG, this.hardPatterns.length, i18next.t('StartTextHard')))
-        }
-        if (this.allPattern.length > 0) {
-            retlist.push(new ArrangementItem(TAGNAME.ALLTAG, this.allPattern.length, i18next.t('StartTextALL')))
-        }
-        if (this.allRandomPatterns.length > 0) {
-            retlist.push(new ArrangementItem(TAGNAME.ALLRANDOM, this.allPattern.length, i18next.t('StartTextAllRandom')))
-        }
-        return retlist
+        return undefined
+    }
+    nextDue(): moment.Moment | undefined {
+        return this.aheadPatterns[0]?.schedule.NextTime
     }
     // 供预览用：按牌组取对应的 pattern 列表
     patternsFor(name: string): Pattern[] {
@@ -197,9 +179,8 @@ export class Arrangement extends ArrangementBase {
             return this.hardPatterns
         } else if (name == TAGNAME.ALLTAG) {
             return this.allPattern
-        } else if (name == TAGNAME.ALLRANDOM) {
-            // 预览始终用文件顺序，不用打乱后的
-            return this.allPattern
+        } else if (name == TAGNAME.STUDY) {
+            return this.studyPatterns()
         }
         return []
     }
@@ -235,7 +216,7 @@ export class Arrangement extends ArrangementBase {
             }
             return -1
         })
-        this.allRandomPatterns = allRandomPatterns([...this.allPattern]);
+        this.allShuffled = shuffled([...this.allPattern]);
         this.aheadPatterns = aheadPatterns(this.allPattern, now);
     }
     async findLivePattern(p: Pattern): Promise<Pattern | undefined> {
@@ -262,19 +243,20 @@ export class Arrangement extends ArrangementBase {
         } else if (name == TAGNAME.HARDTAG) {
             patterns = this.hardPatterns;
         } else if (name == TAGNAME.ALLTAG) {
-            patterns = this.allPattern;
-        } else if (name == TAGNAME.ALLRANDOM) {
-            patterns = this.allRandomPatterns;
+            patterns = this.allShuffled;
+        } else if (name == TAGNAME.STUDY) {
+            patterns = this.studyPatterns();
         } else if (name == TAGNAME.AHEAD) {
             patterns = this.aheadPatterns;
         }
 
         if (patterns) {
+            const learnSet = new Set(this.needLearn)
             for (let i = 0; i < patterns.length; i++) {
                 let p = patterns[i]
                 let cardp = await this.findLivePattern(p)
                 if (cardp) {
-                    yield new PatternIter(cardp, i, patterns.length)
+                    yield new PatternIter(cardp, i, patterns.length, (name == TAGNAME.LEARNTAG || name == TAGNAME.STUDY) && learnSet.has(p))
                 }
             }
         }

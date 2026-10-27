@@ -5,7 +5,7 @@ import React, { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { createRoot, Root } from "react-dom/client"
 
-import { AosrAPI } from "api"
+import { ObsidankiAPI } from "api"
 import { ParseRule } from "deck"
 import { Pattern } from "Pattern"
 
@@ -59,11 +59,9 @@ const MODE_HINTS: Record<string, string> = {
     not: "DeckBuilderHintNot",
 }
 
-const SELECT_WIDTH = {fact: 110, path: 105, operator: 150, mode: 190}
+const SELECT_WIDTH = {fact: '7em', path: '14em', operator: '12em', mode: '16em'}
 
-// MUI 的默认主题是浅色的：text.primary / text.secondary / divider / action.disabled
-// 全是写死的黑色系，Obsidian 切到暗色主题后这些字就看不见了。本仓库没有配 MUI 主题，
-// view.tsx 的做法是在组件上直接写 Obsidian 的 CSS 变量，这里沿用同一套。
+// Preserve Obsidian field colors; shared typography and buttons live in styles.css.
 const FIELD_SX = {
     // InputBase 把 color 直接声明在 .MuiInputBase-input 上，父级设 color 赢不过它
     '& .MuiInputBase-input': { color: 'var(--text-normal)' },
@@ -80,7 +78,7 @@ const FIELD_SX = {
 
 // Select 的下拉菜单是 Portal 到 document.body 的，不在组件树里，得用 MenuProps 单独给
 const MENU_PROPS = {
-    PaperProps: { sx: { bgcolor: 'var(--background-primary)' } },
+    PaperProps: { className: 'obsidanki-ui obsidanki-menu', sx: { bgcolor: 'var(--background-primary)' } },
 }
 
 const MENU_ITEM_SX = {
@@ -95,11 +93,6 @@ const DIVIDER_SX = {
 
 const HINT_SX = {
     color: 'var(--text-muted)',
-}
-
-const BUTTON_SX = {
-    color: 'var(--text-normal)',
-    '&.Mui-disabled': { color: 'var(--text-faint)' },
 }
 
 function keyOf(options: Option[], value: string): string {
@@ -171,7 +164,7 @@ function DeckBuilder({ patterns, insertIntoNote }: BuilderProps) {
 
     const error = regexError(conditions)
     const json = JSON.stringify({ rule: buildRule(mode, conditions) }, null, "\t")
-    const codeBlock = "```aosr-deck-config\n" + json + "\n```"
+    const codeBlock = "```obsidanki-deck-config\n" + json + "\n```"
 
     useEffect(() => {
         let cancelled = false
@@ -279,7 +272,9 @@ function DeckBuilder({ patterns, insertIntoNote }: BuilderProps) {
                             onChange={(e) => update(i, { value: e.target.value })}
                         />
                         <Button
-                            sx={{ ...BUTTON_SX, minWidth: 0, flexShrink: 0, px: 2 }}
+                            className="obsidanki-button"
+                            disableRipple
+                            sx={{ minWidth: 0, flexShrink: 0, px: 2 }}
                             disabled={conditions.length <= 1}
                             onClick={() => removeCondition(i)}
                         >
@@ -289,7 +284,7 @@ function DeckBuilder({ patterns, insertIntoNote }: BuilderProps) {
                 ))}
             </Stack>
 
-            <Button sx={{ ...BUTTON_SX, mt: 1 }} onClick={addCondition}>{t('DeckBuilderAddCondition')}</Button>
+            <Button className="obsidanki-button" disableRipple sx={{ mt: 1 }} onClick={addCondition}>{t('DeckBuilderAddCondition')}</Button>
 
             <Divider sx={DIVIDER_SX} />
 
@@ -316,7 +311,7 @@ function DeckBuilder({ patterns, insertIntoNote }: BuilderProps) {
                 </Typography>}
 
             <TextField
-                sx={{ mt: 2, fontFamily: "monospace", ...FIELD_SX }}
+                sx={{ mt: 2, ...FIELD_SX }}
                 multiline
                 fullWidth
                 minRows={8}
@@ -326,6 +321,8 @@ function DeckBuilder({ patterns, insertIntoNote }: BuilderProps) {
 
             <Stack
                 direction="row"
+                useFlexGap
+                flexWrap="wrap"
                 spacing={1}
                 sx={{
                     position: "sticky",
@@ -338,8 +335,8 @@ function DeckBuilder({ patterns, insertIntoNote }: BuilderProps) {
                     borderTop: "1px solid var(--background-modifier-border)",
                 }}
             >
-                <Button variant="contained" onClick={copyCodeBlock}>{t('DeckBuilderCopy')}</Button>
-                <Button sx={BUTTON_SX} onClick={insertCodeBlock}>{t('DeckBuilderInsert')}</Button>
+                <Button className="obsidanki-button" disableRipple onClick={copyCodeBlock}>{t('DeckBuilderCopy')}</Button>
+                <Button className="obsidanki-button" disableRipple onClick={insertCodeBlock}>{t('DeckBuilderInsert')}</Button>
             </Stack>
         </Box>
     )
@@ -350,7 +347,7 @@ function DeckBuilderHost({ app }: { app: App }) {
     const [patterns, setPatterns] = useState<Pattern[] | null>(null)
 
     useEffect(() => {
-        new AosrAPI().getAllPattern().then(setPatterns)
+        new ObsidankiAPI().getAllPattern().then(setPatterns)
     }, [])
 
     function insertIntoNote(text: string) {
@@ -375,6 +372,7 @@ export class DeckBuilderModal extends Modal {
         // .modal 自带宽度，只调里面控件的宽度会溢出，得显式撑开容器
         this.modalEl.style.width = "780px"
         this.modalEl.style.maxWidth = "92vw"
+        this.contentEl.addClasses(["obsidanki-ui", "obsidanki-builder"])
         this.root = createRoot(this.contentEl)
         this.root.render(<DeckBuilderHost app={this.app} />)
     }

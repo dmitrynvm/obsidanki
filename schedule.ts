@@ -81,7 +81,7 @@ export interface scheduleData {
     Learned: string | null
     // 上次被标记为忘记，之后复习的进度 默认为0 范围从-2到+2
     LearnedCount: number | null
-    // 用于读取存储的schedule yaml格式 需要复制对象
+    // Hydrate a schedule from its persisted database fields.
     copy(v: scheduleData): void
 }
 
@@ -336,14 +336,6 @@ export class defaultSchedule implements PatternSchedule {
 
 // 卡片所有的复习结果
 export class CardSchedule {
-    copy(cardSchedule: CardSchedule) {
-        const map1 = new Map(Object.entries(cardSchedule.schedules))
-        for (let [k, v] of map1) {
-            let schedule = NewSchedule(k)
-            schedule.copy(v)
-            this.schedules.set(k, schedule)
-        }
-    }
     // 将datas中的数据写入本地schedules: Map中
     setData(datas: scheduleData[]) {
         for (let data of datas) {
@@ -365,7 +357,7 @@ export class CardSchedule {
         return parten
     }
 
-    // 辅助函数，将CardSchedule结构转换成PatternYaml[]结构
+    // Convert card schedules into the database scheduleData array.
     cardScheduleToPatternData(): scheduleData[] {
         let patternData: scheduleData[] = []
         this.schedules.forEach((schedule) => {

@@ -28,7 +28,7 @@ class multiclozePattern extends Pattern {
     async SubmitOpt(opt: Operation): Promise<void> {
         this.card.getSchedule(this.TagID).apply(opt)
         this.insertPatternID()
-        await this.card.commitFile({ ID: true, annotation: true })
+        await this.card.commitFile({ ID: true, schedules: true })
     }
     Component = (props: PatternProps): JSX.Element => {
         return <ClozePatternComponent index={0} text={this.text} patternProps={props} clozeOriginal={""} clozeInner={""} path={this.card.note.path} replaceAll={true}></ClozePatternComponent>
@@ -42,8 +42,8 @@ class multiclozePattern extends Pattern {
     }
     text: string
     originalID: string
-    constructor(card: Card, text: string, originalID: string, tagid: string) {
-        super(card, tagid)
+    constructor(card: Card, text: string, originalID: string, tagid: string, sourceOffset: number) {
+        super(card, tagid, sourceOffset)
         this.text = text
         this.originalID = originalID
     }
@@ -94,7 +94,7 @@ class clozePattern extends Pattern {
     async SubmitOpt(opt: Operation): Promise<void> {
         this.card.getSchedule(this.TagID).apply(opt)
         this.insertPatternID()
-        await this.card.commitFile({ ID: true, annotation: true })
+        await this.card.commitFile({ ID: true, schedules: true })
     }
     insertPatternID() {
         if (this.originalID) {
@@ -117,8 +117,8 @@ class clozePattern extends Pattern {
     get BackText(): string {
         return this.text.replace(clozeReg, "$1")
     }
-    constructor(card: Card, text: string, index: number, clozeOriginal: string, clozeInner: string, originalID: string, tagid: string) {
-        super(card, tagid)
+    constructor(card: Card, text: string, index: number, clozeOriginal: string, clozeInner: string, originalID: string, tagid: string, sourceOffset: number) {
+        super(card, tagid, sourceOffset)
         this.text = text
         this.clozeInner = clozeInner
         this.clozeOriginal = clozeOriginal
@@ -139,9 +139,12 @@ type clozePatternComponentProps = {
 
 type clozePatternComponentState = {
     markdownDivMask: HTMLDivElement
-    // markdownDivUnmask: HTMLDivElement
+    markdownDivAnswer: HTMLDivElement
 }
 
+const clozeBlank = `<span class="obsidanki-cloze obsidanki-cloze-blank">[…]</span>`
+
+// The question shows a blank in place of the cloze; the answer is a separate render, swapped in on reveal
 class ClozePatternComponent extends React.Component<clozePatternComponentProps, clozePatternComponentState> {
     private loadFlag: boolean
     async componentDidMount() {
@@ -149,49 +152,52 @@ class ClozePatternComponent extends React.Component<clozePatternComponentProps, 
             return
         }
         this.loadFlag = true
-        this.state.markdownDivMask.empty()
         let masktext: string
+        let answertext: string
         if (this.props.replaceAll) {
-            masktext = this.props.text.replace(clozeReg, `<span style="border-bottom: 2px solid #dbdbdb;"><mark class="aosr-fuzzy-el">$1</mark></span>`)
+            masktext = this.props.text.replace(clozeReg, clozeBlank)
+            answertext = this.props.text.replace(clozeReg, `<mark class="obsidanki-cloze">$1</mark>`)
         } else {
-            masktext = replaceClosestSubstring(this.props.text, this.props.clozeOriginal, `<span style="border-bottom: 2px solid #dbdbdb;"><mark class="aosr-fuzzy-el">${this.props.clozeInner}</mark></span>`, this.props.index)
+            masktext = replaceClosestSubstring(this.props.text, this.props.clozeOriginal, clozeBlank, this.props.index)
+            answertext = replaceClosestSubstring(this.props.text, this.props.clozeOriginal, `<mark class="obsidanki-cloze">${this.props.clozeInner}</mark>`, this.props.index)
         }
-        masktext = prettyText(masktext)
-        await renderMarkdown(masktext, this.state.markdownDivMask, this.props.path, this.props.patternProps.view)
+        await renderMarkdown(prettyText(masktext), this.state.markdownDivMask, this.props.path, this.props.patternProps.view)
+        await renderMarkdown(prettyText(answertext), this.state.markdownDivAnswer, this.props.path, this.props.patternProps.view)
         this.setState({
             markdownDivMask: this.state.markdownDivMask,
+            markdownDivAnswer: this.state.markdownDivAnswer,
         })
     }
     constructor(props: clozePatternComponentProps) {
         super(props)
         this.state = {
             markdownDivMask: createDiv(),
+            markdownDivAnswer: createDiv(),
         }
         this.loadFlag = false
     }
     render() {
-        return <div className={this.props.patternProps.showAns ? 'aosr-unblur-ctrl' : 'aosr-fuzzy-ctrl'} >
-            <NodeContainer node={this.state.markdownDivMask}></NodeContainer>
+        return <div className="obsidanki-card">
+            <NodeContainer node={this.props.patternProps.showAns ? this.state.markdownDivAnswer : this.state.markdownDivMask}></NodeContainer>
         </div>
-
     }
 }
 
 export class ClozeParser implements PatternParser {
     Parse(card: Card): Pattern[] {
-        let reg = /==(\S[\s\S]*?)==((?: (?:#[\w\/]+\b|%%AOSR\/[\w\/]+%%))*)/gm
+        let reg = /==(\S[\s\S]*?)==((?: (?:#(?!OBSIDANKI(?:\/|\b))[\w\/]+\b|%%OBSIDANKI\/[\w\/]+%%))*)/gm
         let results: Pattern[] = []
         for (let bi in card.bodyList) {
 			let body = card.bodyList[bi]
             let bodytag = TagParser.parse(body)
             let multicloze = bodytag.findTag("multicloze")
             if (multicloze) {
-                let has = hasClozeReg.test(body)
-                if (has) {
+                const firstCloze = hasClozeReg.exec(body)
+                if (firstCloze) {
                     let newID = `#${CardIDTag}/${card.ID}/mc/${cyrb53(body, 4)}`
                     let idTag = bodytag.findTag(CardIDTag, card.ID, "mc")
                     let originalID = idTag?.Original || ""
-                    let result = new multiclozePattern(card, body, originalID, idTag?.Canonical || newID)
+                    let result = new multiclozePattern(card, body, originalID, idTag?.Canonical || newID, card.bodyOffsets[Number(bi)] + firstCloze.index)
                     results.push(result)
                 } else {
                     log(() => `Ignored file: ${card.note.path} does not contain cloze pattern`);
@@ -206,7 +212,7 @@ export class ClozeParser implements PatternParser {
                     let tagInfo = TagParser.parse(regArr[2] || "")
                     let idTag = tagInfo.findTag(CardIDTag, card.ID, "c")
                     let originalID = idTag?.Original || ""
-                    let result = new clozePattern(card, body, regArr.index, regArr[0], regArr[1], originalID, idTag?.Canonical || newID)
+                    let result = new clozePattern(card, body, regArr.index, regArr[0], regArr[1], originalID, idTag?.Canonical || newID, card.bodyOffsets[Number(bi)] + regArr.index)
                     results.push(result)
                 }
             }

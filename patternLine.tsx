@@ -22,8 +22,8 @@ abstract class linePattern extends Pattern {
 	back: string
 	originalID: string
 	reverse: boolean
-	constructor(card: Card, keyText: string, front: string, back: string, originalID: string, tagid: string, reverse: boolean) {
-		super(card, tagid)
+	constructor(card: Card, keyText: string, front: string, back: string, originalID: string, tagid: string, reverse: boolean, sourceOffset: number) {
+		super(card, tagid, sourceOffset)
 		this.front = front
 		this.keyText = keyText
 		this.back = back
@@ -45,46 +45,17 @@ abstract class linePattern extends Pattern {
 		// 原文中不一定包含pattern的ID 可能需要更新
 		this.insertPatternID()
 		// 通知卡片一切就绪 准备更新原文
-		await this.card.commitFile({ ID: true, annotation: true })
+		await this.card.commitFile({ ID: true, schedules: true })
 	}
 	// 展示组件
 	Component = (props: PatternProps): JSX.Element => {
 		return <LinePatternComponent reverse={this.reverse} front={this.front} back={this.back} path={this.card.note.path} patternProps={props}></LinePatternComponent>
 	}
-	Pronounce(): void {
-		// 如果是单词 则尝试调用有道发音
-		let ttstext = ""
-		if (this.reverse == false) {
-			ttstext = this.front
-		} else {
-			ttstext = this.back
-		}
-		if (/^[a-zA-Z\s-]+$/.test(ttstext)) {
-			setTimeout(() => {
-				this.playTTS(ttstext)
-			}, 100);
-		}
-	}
-	playTTS = async (text: string) => {
-		if (GlobalSettings.WordTTSURL.length > 0) {
-			let url = GlobalSettings.WordTTSURL.replace('%s', text)
-			const audio = new Audio(url)
-			await audio.play()
-		}
-	}
 }
 
 class singleLinePattern extends linePattern {
 	insertPatternID() {
-		if (this.originalID) {
-			return
-		}
-		this.card.updateFile({
-			updateFunc: (content): string => {
-				let newContent = this.keyText + " " + IDComment(this.TagID);
-				return content.replace(this.keyText, () => { return newContent });
-			}
-		})
+		// Identity comes from the question text; nothing is written into the note
 	}
 }
 
@@ -141,20 +112,40 @@ class LinePatternComponent extends React.Component<singleLinePatternComponentPro
 		}
 	}
 	render() {
-		const showAnswerClass = this.props.patternProps.showAns ? 'aosr-show' : '';
-
-		return <div>
+		// The answer is not in the DOM until revealed, so nothing can be read through it
+		return <div className="obsidanki-card">
 			<NodeContainer node={this.state.markdownDivFront}></NodeContainer>
-			<br></br>
-			<div className={`aosr-answer ${showAnswerClass}`}>
-				<NodeContainer node={this.state.markdownDivBack}></NodeContainer>
-			</div>
-			<br></br>
+			{
+				this.props.patternProps.showAns && <>
+					<hr className="obsidanki-card-divider"></hr>
+					<NodeContainer node={this.state.markdownDivBack}></NodeContainer>
+				</>
+			}
 		</div>
 	}
 }
 
 export class SingleLineParser implements PatternParser {
+	constructor(private readonly includedLines?: ReadonlyMap<number, string>) {}
+
+	private *matches(body: string, bodyOffset: number, expression: RegExp): Generator<RegExpExecArray> {
+		expression.lastIndex = 0
+		if (!this.includedLines) {
+			let match: RegExpExecArray | null
+			while ((match = expression.exec(body)) !== null) yield match
+			return
+		}
+		for (const [offset, line] of this.includedLines) {
+			if (offset < bodyOffset || offset >= bodyOffset + body.length) continue
+			const match = expression.exec(line)
+			expression.lastIndex = 0
+			if (match) {
+				match.index = offset - bodyOffset
+				yield match
+			}
+		}
+	}
+
 	Parse(card: Card): Pattern[] {
 		const processingTimesLimit = 10000;
 		const dSepEscaped = escapeRegExp(GlobalSettings.OneLineDelimeter);
@@ -172,40 +163,42 @@ export class SingleLineParser implements PatternParser {
 		const directShadow = rSep.length > dSep.length && rSep.includes(dSep) ? rSep : "";
 		const reversedShadow = dSep.length > rSep.length && dSep.includes(rSep) ? dSep : "";
 		let results: Pattern[] = []
-		for (let body of card.bodyList) {
-			let i;
-			for (i = 0; i < processingTimesLimit; i++) { // Process direct patterns
-				let regArr = regDirect.exec(body);
-				if (regArr == null) {
-					break; // stop processing due to matcher resets iterator to 0
-				}
+		const seen = new Map<string, number>()
+		for (let bi = 0; bi < card.bodyList.length; bi++) {
+			const body = card.bodyList[bi]
+			const bodyOffset = card.bodyOffsets[bi]
+			let i = 0;
+			for (const regArr of this.matches(body, bodyOffset, regDirect)) {
+				if (i++ >= processingTimesLimit) break
 				let [fullText, frontText, sepText, backText] = regArr;
 				if (!(directShadow && fullText.includes(directShadow))) {
-					let newID = `#${CardIDTag}/${card.ID}/s/${cyrb53(fullText, 4)}`
+					const front = frontText.trim()
+					const occurrence = (seen.get(`s:${front}`) ?? 0) + 1
+					seen.set(`s:${front}`, occurrence)
+					const hashInput = occurrence === 1 ? front : `${front}\n${occurrence}`
 					let tagInfo = TagParser.parse(fullText)
 					let idTag = tagInfo.findTag(CardIDTag, card.ID, "s")
-					let originalID = idTag?.Original || ""
-					let result = new singleLinePattern(card, fullText, frontText, backText, originalID, idTag?.Canonical || newID, false)
-					results.push(result)
+					const id = idTag?.Canonical ?? `#${CardIDTag}/${card.ID}/s/${cyrb53(hashInput, 4)}`
+					results.push(new singleLinePattern(card, fullText, frontText, backText, idTag?.Original || "", id, false, bodyOffset + regArr.index))
 				}
 
 			}
-			for (i = 0; i < processingTimesLimit; i++) { // Process two-side patterns
-				let regArr = regReversed.exec(body);
-				if (regArr == null) {
-					break; // stop processing due to matcher resets iterator to 0
-				}
+			i = 0;
+			for (const regArr of this.matches(body, bodyOffset, regReversed)) {
+				if (i++ >= processingTimesLimit) break
 				let [fullText, frontText, sepText, backText] = regArr;
 				if (!(reversedShadow && fullText.includes(reversedShadow))) {
-					let newIDForward = `#${CardIDTag}/${card.ID}/sf/${cyrb53(fullText, 4)}`
-					let newIDReverse = `#${CardIDTag}/${card.ID}/sr/${cyrb53(fullText, 4)}`
+					const front = frontText.trim()
+					const occurrence = (seen.get(`r:${front}`) ?? 0) + 1
+					seen.set(`r:${front}`, occurrence)
+					const hashInput = occurrence === 1 ? front : `${front}\n${occurrence}`
 					let tagInfo = TagParser.parse(fullText)
 					let idTagForward = tagInfo.findTag(CardIDTag, card.ID, "sf")
 					let idTagReverse = tagInfo.findTag(CardIDTag, card.ID, "sr")
-					let originalIDForward = idTagForward?.Original || ""
-					let originalIDReverse = idTagReverse?.Original || ""
-					let result1 = new singleLinePattern(card, fullText, frontText, backText, originalIDForward, idTagForward?.Canonical || newIDForward, false)
-					let result2 = new singleLinePattern(card, fullText, frontText, backText, originalIDReverse, idTagReverse?.Canonical || newIDReverse, true)
+					const idForward = idTagForward?.Canonical ?? `#${CardIDTag}/${card.ID}/sf/${cyrb53(hashInput, 4)}`
+					const idReverse = idTagReverse?.Canonical ?? `#${CardIDTag}/${card.ID}/sr/${cyrb53(hashInput, 4)}`
+					let result1 = new singleLinePattern(card, fullText, frontText, backText, idTagForward?.Original || "", idForward, false, bodyOffset + regArr.index)
+					let result2 = new singleLinePattern(card, fullText, frontText, backText, idTagReverse?.Original || "", idReverse, true, bodyOffset + regArr.index)
 					results.push(result1, result2)
 				}
 			}
@@ -222,7 +215,9 @@ export class MultiLineParser implements PatternParser {
 			cardParserRegFlags);
 		// 捕获不包含? 开头的连续行 然后捕获标签 然后捕获剩余行
 		let results: Pattern[] = []
-		for (let body of card.bodyList) {
+		for (let bi = 0; bi < card.bodyList.length; bi++) {
+			const body = card.bodyList[bi]
+			const bodyOffset = card.bodyOffsets[bi]
 			let regArr = reg.exec(body)
 			while (regArr !== null) {
 				let fullText = regArr[0];
@@ -233,7 +228,7 @@ export class MultiLineParser implements PatternParser {
 				let tagInfo = TagParser.parse(sepText || "")
 				let idTag = tagInfo.findTag(CardIDTag, card.ID, "m")
 				let originalID = idTag?.Original || ""
-				let result = new multiLinePattern(card, fullText, frontText, backText, originalID, idTag?.Canonical || newID, false)
+				let result = new multiLinePattern(card, fullText, frontText, backText, originalID, idTag?.Canonical || newID, false, bodyOffset + regArr.index)
 				results.push(result)
 				regArr = reg.exec(body)
 			}

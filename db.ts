@@ -1,10 +1,9 @@
 import { Low } from 'lowdb';
 import { log, getAppInstance } from 'main';
-import { App, Notice, TAbstractFile, TFile, Vault } from 'obsidian';
+import { Notice } from 'obsidian';
 import { CardSchedule, scheduleData } from 'schedule';
-import { AOSR_DEFAULT_SETTINGS, GlobalSettings } from 'setting';
-import { FileSystemAdapter } from 'obsidian';
-import { get } from 'lodash';
+import { OBSIDANKI_DEFAULT_SETTINGS, GlobalSettings } from 'setting';
+import { ActivityCounts, activityDate } from 'learningActivity';
 
 // 存储文档的数据结构
 export interface CardDoc {
@@ -31,9 +30,10 @@ class ObsidianAdapter {
                 const data = await getAppInstance().vault.adapter.read(filePath);
                 return JSON.parse(data);
             }
-            return { docs: [] } as Data;
+            return { docs: [], activity: {} } as Data;
         } catch (error) {
-            new Notice(`[Aosr] read error: ${error}`);
+            new Notice(`[Obsidanki] read error: ${error}`);
+            throw error;
         }
     }
 
@@ -55,20 +55,25 @@ class ObsidianAdapter {
 
 type Data = {
     docs: CardDoc[];
+    activity?: Record<string, number>;
 }
 
 export class DatabaseHelper {
     private static instance: DatabaseHelper;
     private db: Low<Data>;
+    public readonly ready: Promise<void>;
+    private writes: Promise<void> = Promise.resolve();
+    private activity: ActivityCounts = {};
+    private listeners = new Set<() => void>();
 
     public static getInstance(): DatabaseHelper {
         if (!DatabaseHelper.instance) {
             try {
-                DatabaseHelper.instance = new DatabaseHelper(GlobalSettings.AosrDbPath);
+                DatabaseHelper.instance = new DatabaseHelper(GlobalSettings.ObsidankiDbPath);
             } catch (error) {
                 console.log(error);
-                DatabaseHelper.instance = new DatabaseHelper(AOSR_DEFAULT_SETTINGS.AosrDbPath);
-                new Notice(`[Aosr] Database initialization error by path: ${GlobalSettings.AosrDbPath} using deafult one.`);
+                DatabaseHelper.instance = new DatabaseHelper(OBSIDANKI_DEFAULT_SETTINGS.ObsidankiDbPath);
+                new Notice(`[Obsidanki] Database initialization error by path: ${GlobalSettings.ObsidankiDbPath} using deafult one.`);
             }
             
         }
@@ -84,25 +89,48 @@ export class DatabaseHelper {
             dir.length > 0 ? dir + '/' : '',
             filename
         );
-        this.db = new Low(adapter, {});
-        this.init();
+        this.db = new Low(adapter, { docs: [] });
+        this.ready = this.init();
     }
 
     private async init() {
         await this.db.read();
-        if (!this.db.data.docs) {
-            this.db.data.docs = [];
-            await this.db.write();
-        }
+        this.db.data.docs ??= [];
+        this.activity = { ...this.db.data.activity };
     }
 
-    public insertOrUpdate(cardID: string, cardSchedule: CardSchedule) {
-        let doc = this.db.data.docs.find((pattern) => pattern.ID === cardID);
-        if (doc) {
-            doc.CardSchedules = cardSchedule.cardScheduleToPatternData();
-        } else {
-            this.db.data.docs.push({ ID: cardID, CardSchedules: cardSchedule.cardScheduleToPatternData() });
-        }
+    public getActivity = (): ActivityCounts => this.activity;
+
+    public subscribeActivity = (listener: () => void): (() => void) => {
+        this.listeners.add(listener);
+        return () => { this.listeners.delete(listener); };
+    }
+
+    // Serialize writes so completed grades never lose daily counts.
+    public saveReview(cardID: string, cardSchedule: CardSchedule): Promise<void> {
+        const day = activityDate(new Date());
+        const schedules = cardSchedule.cardScheduleToPatternData().map(schedule => ({ ...schedule }));
+        const write = this.writes.then(async () => {
+            await this.ready;
+            const previous = this.db.data;
+            const docs = previous.docs.slice();
+            const index = docs.findIndex(doc => doc.ID === cardID);
+            const doc = { ID: cardID, CardSchedules: schedules };
+            if (index < 0) docs.push(doc);
+            else docs[index] = doc;
+            const activity = { ...this.activity, [day]: (this.activity[day] ?? 0) + 1 };
+            this.db.data = { ...previous, docs, activity };
+            try {
+                await this.db.write();
+            } catch (error) {
+                this.db.data = previous;
+                throw error;
+            }
+            this.activity = activity;
+            for (const listener of this.listeners) listener();
+        });
+        this.writes = write.catch(() => {});
+        return write;
     }
 
     public query(cardID: string): CardDoc | null {
@@ -112,7 +140,4 @@ export class DatabaseHelper {
         return this.db.data.docs.find((pattern) => pattern.ID === cardID) || null;
     }
 
-    public async commit() {
-        await this.db.write();
-    }
 }

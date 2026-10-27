@@ -19,7 +19,7 @@ import { syntaxTree } from "@codemirror/language";
 export class EmojiWidget extends WidgetType {
     toDOM(view: EditorView): HTMLElement {
         const span = document.createElement("span");
-		span.classList.add("aosr-emoji-widget");
+		span.classList.add("obsidanki-emoji-widget");
         span.innerText = "🏷";
         return span;
     }
@@ -49,10 +49,10 @@ export class emojiplugin implements PluginValue {
                 from,
                 to,
                 enter(node) {
-                    // 注释写法 %%AOSR/xxx%%：语法树里是 comment-start / comment / comment-end 三个节点，
+                    // 注释写法 %%OBSIDANKI/xxx%%：语法树里是 comment-start / comment / comment-end 三个节点，
                     // 从 comment-start 起整段替换
                     if (node.name.contains("comment-start")) {
-                        let m = docText.slice(node.from, node.from + 200).match(/^%%AOSR\/[\/\w]+%%/)
+                        let m = docText.slice(node.from, node.from + 200).match(/^%%OBSIDANKI\/[\/\w]+%%/)
                         if (m && !inSelection(view.state.selection, node.from, node.from + m[0].length)) {
                             builder.add(
                                 node.from,
@@ -63,20 +63,6 @@ export class emojiplugin implements PluginValue {
                             )
                         }
                         return
-                    }
-                    if (node.name.startsWith("hashtag") && node.name.contains("AOSR")) {
-                        let text = docText.substring(node.from, node.to)
-                        if (text.startsWith("AOSR/")) {
-                            if (!inSelection(view.state.selection, node.from, node.to)) {
-                                builder.add(
-                                    node.from - 1,
-                                    node.to,
-                                    Decoration.replace({
-                                        widget: new EmojiWidget()
-                                    })
-                                )
-                            }
-                        }
                     }
                 },
             });
@@ -107,7 +93,7 @@ class TagInfo {
     Head: string
     Suffix: string
     SubTag: TagInfo
-    // 规范写法 #a/b/c，作为复习数据的键；Original 是笔记里的原文（可能是 %%a/b/c%%）
+    // IDs use #OBSIDANKI/... internal keys; Original keeps the note's %%OBSIDANKI/...%% comment.
     Canonical: string
     constructor(original: string, tagstr: string) {
         this.Original = original
@@ -161,8 +147,8 @@ class TagsInfo {
 export class TagParser {
     static parse(str: string) {
         let tags: TagInfo[] = []
-        // #tag 或 %%AOSR/xxx%%（注释写法的卡片 ID）
-        let results = str.matchAll(/#[\/\w]+|%%(AOSR\/[\/\w]+)%%/gm)
+        // Ordinary hashtags and current comment IDs; OBSIDANKI is reserved for comment IDs.
+        let results = str.matchAll(/#(?!OBSIDANKI(?:\/|\b))[\/\w]+|%%(OBSIDANKI\/[\/\w]+)%%/gm)
         for (let result of results) {
             tags.push(new TagInfo(result[0], result[1] || result[0]))
         }
