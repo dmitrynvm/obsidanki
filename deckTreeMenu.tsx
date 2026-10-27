@@ -183,7 +183,7 @@ export function DeckTreeMenu({ arrangement, onStudy, onCollapsedChange }: DeckTr
                         className="obsidanki-start-count obsidanki-tree-due"
                         aria-label={String(i18n.t('TreeDueList', { name: node.label, count: node.due }))}
                         title={String(i18n.t('TreeDueList', { name: node.label, count: node.due }))}
-                        onClick={() => openDeckPreview(node.rule, TAGNAME.STUDY, node.label)}
+                        onClick={() => { void openDeckPreview(node.rule, TAGNAME.STUDY, node.label) }}
                     >{node.due}</button> : <span className="obsidanki-tree-zero">0</span>}
                     <span className="obsidanki-tree-slash" aria-hidden="true">/</span>
                     <button
@@ -191,7 +191,7 @@ export function DeckTreeMenu({ arrangement, onStudy, onCollapsedChange }: DeckTr
                         className="obsidanki-start-count obsidanki-tree-total"
                         aria-label={String(i18n.t('TreeAllList', { name: node.label, count: node.total }))}
                         title={String(i18n.t('TreeAllList', { name: node.label, count: node.total }))}
-                        onClick={() => openDeckPreview(node.rule, TAGNAME.ALLTAG, node.label)}
+                        onClick={() => { void openDeckPreview(node.rule, TAGNAME.ALLTAG, node.label) }}
                     >{node.total}</button>
                 </div>
             </div>

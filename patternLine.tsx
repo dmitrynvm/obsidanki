@@ -4,16 +4,11 @@ import { cyrb53 } from "hash";
 import { PatternParser } from "ParserCollection";
 import { Pattern, PatternProps, prettyText } from "Pattern";
 import React from "react";
-import { Operation } from "schedule";
 import { GlobalSettings } from "setting";
 import { TagParser } from "tag";
 import { renderMarkdown } from "./markdown";
 import { NodeContainer } from "./nodeContainer";
-import MUICard from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import { Box } from '@mui/system';
 import { cardParserRegFlags, escapeRegExp } from "Pattern";
-import { log } from "main";
 
 
 abstract class linePattern extends Pattern {
@@ -38,17 +33,8 @@ abstract class linePattern extends Pattern {
 	get BackText(): string {
 		return this.reverse ? this.front : this.back
 	}
-	// 界面按钮点击
-	async SubmitOpt(opt: Operation): Promise<void> {
-		// 计算调度情况
-		this.card.getSchedule(this.TagID).apply(opt)
-		// 原文中不一定包含pattern的ID 可能需要更新
-		this.insertPatternID()
-		// 通知卡片一切就绪 准备更新原文
-		await this.card.commitFile({ ID: true, schedules: true })
-	}
 	// 展示组件
-	Component = (props: PatternProps): JSX.Element => {
+	Component = (props: PatternProps): React.JSX.Element => {
 		return <LinePatternComponent reverse={this.reverse} front={this.front} back={this.back} path={this.card.note.path} patternProps={props}></LinePatternComponent>
 	}
 }
@@ -87,7 +73,10 @@ type singleLinePatternComponentState = {
 }
 
 class LinePatternComponent extends React.Component<singleLinePatternComponentProps, singleLinePatternComponentState> {
-	async componentDidMount() {
+	componentDidMount() {
+		void this.renderSides()
+	}
+	private async renderSides() {
 		let markdownDivFront = this.state.markdownDivFront
 		markdownDivFront.empty()
 		let markdownDivBack = this.state.markdownDivBack
@@ -170,7 +159,7 @@ export class SingleLineParser implements PatternParser {
 			let i = 0;
 			for (const regArr of this.matches(body, bodyOffset, regDirect)) {
 				if (i++ >= processingTimesLimit) break
-				let [fullText, frontText, sepText, backText] = regArr;
+				let [fullText, frontText, , backText] = regArr;
 				if (!(directShadow && fullText.includes(directShadow))) {
 					const front = frontText.trim()
 					const occurrence = (seen.get(`s:${front}`) ?? 0) + 1
@@ -186,7 +175,7 @@ export class SingleLineParser implements PatternParser {
 			i = 0;
 			for (const regArr of this.matches(body, bodyOffset, regReversed)) {
 				if (i++ >= processingTimesLimit) break
-				let [fullText, frontText, sepText, backText] = regArr;
+				let [fullText, frontText, , backText] = regArr;
 				if (!(reversedShadow && fullText.includes(reversedShadow))) {
 					const front = frontText.trim()
 					const occurrence = (seen.get(`r:${front}`) ?? 0) + 1

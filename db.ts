@@ -2,7 +2,7 @@ import { Low } from 'lowdb';
 import { log, getAppInstance } from 'main';
 import { Notice } from 'obsidian';
 import { CardSchedule, scheduleData } from 'schedule';
-import { OBSIDANKI_DEFAULT_SETTINGS, GlobalSettings } from 'setting';
+import { GlobalSettings, defaultDbPath, resolveDbPath } from 'setting';
 import { ActivityCounts, activityDate } from 'learningActivity';
 
 // 存储文档的数据结构
@@ -22,15 +22,15 @@ class ObsidianAdapter {
         this.fileName = fileName;
     }
 
-    async read() {
+    async read(): Promise<Data> {
         try {
             const filePath = this.basePath + this.fileName;
             log(() => `Reading from file: ${filePath}`);
             if (await getAppInstance().vault.adapter.exists(filePath)) {
                 const data = await getAppInstance().vault.adapter.read(filePath);
-                return JSON.parse(data);
+                return JSON.parse(data) as Data;
             }
-            return { docs: [], activity: {} } as Data;
+            return { docs: [], activity: {} };
         } catch (error) {
             new Notice(`[Obsidanki] read error: ${error}`);
             throw error;
@@ -38,7 +38,7 @@ class ObsidianAdapter {
     }
 
 
-    async write(data: any) {
+    async write(data: Data) {
         const filePath = this.basePath + this.fileName;
         const content = JSON.stringify(data, null, 1);
         if (!await getAppInstance().vault.adapter.exists(this.basePath)) {
@@ -69,10 +69,10 @@ export class DatabaseHelper {
     public static getInstance(): DatabaseHelper {
         if (!DatabaseHelper.instance) {
             try {
-                DatabaseHelper.instance = new DatabaseHelper(GlobalSettings.ObsidankiDbPath);
+                DatabaseHelper.instance = new DatabaseHelper(resolveDbPath(GlobalSettings.ObsidankiDbPath));
             } catch (error) {
-                console.log(error);
-                DatabaseHelper.instance = new DatabaseHelper(OBSIDANKI_DEFAULT_SETTINGS.ObsidankiDbPath);
+                console.error(error);
+                DatabaseHelper.instance = new DatabaseHelper(defaultDbPath());
                 new Notice(`[Obsidanki] Database initialization error by path: ${GlobalSettings.ObsidankiDbPath} using deafult one.`);
             }
             
@@ -89,7 +89,7 @@ export class DatabaseHelper {
             dir.length > 0 ? dir + '/' : '',
             filename
         );
-        this.db = new Low(adapter, { docs: [] });
+        this.db = new Low<Data>(adapter, { docs: [] });
         this.ready = this.init();
     }
 

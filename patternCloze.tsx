@@ -7,7 +7,6 @@ import { NodeContainer } from "nodeContainer";
 import { PatternParser } from "ParserCollection";
 import { Pattern, PatternProps, prettyText } from "Pattern";
 import React from "react";
-import { Operation } from "schedule";
 import { TagParser } from "tag";
 
 const hasClozeReg = /==(\S[\s\S]*?)==/m
@@ -25,12 +24,7 @@ class multiclozePattern extends Pattern {
             }
         })
     }
-    async SubmitOpt(opt: Operation): Promise<void> {
-        this.card.getSchedule(this.TagID).apply(opt)
-        this.insertPatternID()
-        await this.card.commitFile({ ID: true, schedules: true })
-    }
-    Component = (props: PatternProps): JSX.Element => {
+    Component = (props: PatternProps): React.JSX.Element => {
         return <ClozePatternComponent index={0} text={this.text} patternProps={props} clozeOriginal={""} clozeInner={""} path={this.card.note.path} replaceAll={true}></ClozePatternComponent>
     }
     get FrontText(): string {
@@ -91,11 +85,6 @@ class clozePattern extends Pattern {
     clozeInner: string // ==内部的文本
     originalID: string
     index: number // 匹配到的索引位置
-    async SubmitOpt(opt: Operation): Promise<void> {
-        this.card.getSchedule(this.TagID).apply(opt)
-        this.insertPatternID()
-        await this.card.commitFile({ ID: true, schedules: true })
-    }
     insertPatternID() {
         if (this.originalID) {
             return
@@ -108,7 +97,7 @@ class clozePattern extends Pattern {
             }
         })
     }
-    Component = (props: PatternProps): JSX.Element => {
+    Component = (props: PatternProps): React.JSX.Element => {
         return <ClozePatternComponent index={this.index} text={this.text} patternProps={props} clozeOriginal={this.clozeOriginal} clozeInner={this.clozeInner} path={this.card.note.path} replaceAll={false}></ClozePatternComponent>
     }
     get FrontText(): string {
@@ -147,7 +136,10 @@ const clozeBlank = `<span class="obsidanki-cloze obsidanki-cloze-blank">[…]</s
 // The question shows a blank in place of the cloze; the answer is a separate render, swapped in on reveal
 class ClozePatternComponent extends React.Component<clozePatternComponentProps, clozePatternComponentState> {
     private loadFlag: boolean
-    async componentDidMount() {
+    componentDidMount() {
+        void this.renderSides()
+    }
+    private async renderSides() {
         if (this.loadFlag) {
             return
         }
@@ -185,10 +177,11 @@ class ClozePatternComponent extends React.Component<clozePatternComponentProps, 
 
 export class ClozeParser implements PatternParser {
     Parse(card: Card): Pattern[] {
-        let reg = /==(\S[\s\S]*?)==((?: (?:#(?!OBSIDANKI(?:\/|\b))[\w\/]+\b|%%OBSIDANKI\/[\w\/]+%%))*)/gm
+        let reg = /==(\S[\s\S]*?)==((?: (?:#(?!OBSIDANKI(?:\/|\b))[\w/]+\b|%%OBSIDANKI\/[\w/]+%%))*)/gm
         let results: Pattern[] = []
-        for (let bi in card.bodyList) {
-			let body = card.bodyList[bi]
+        for (const [index, body] of card.bodyList.entries()) {
+            // The hash input below concatenates the index as a string, as the former for-in key did.
+            const bi = String(index)
             let bodytag = TagParser.parse(body)
             let multicloze = bodytag.findTag("multicloze")
             if (multicloze) {
@@ -197,7 +190,7 @@ export class ClozeParser implements PatternParser {
                     let newID = `#${CardIDTag}/${card.ID}/mc/${cyrb53(body, 4)}`
                     let idTag = bodytag.findTag(CardIDTag, card.ID, "mc")
                     let originalID = idTag?.Original || ""
-                    let result = new multiclozePattern(card, body, originalID, idTag?.Canonical || newID, card.bodyOffsets[Number(bi)] + firstCloze.index)
+                    let result = new multiclozePattern(card, body, originalID, idTag?.Canonical || newID, card.bodyOffsets[index] + firstCloze.index)
                     results.push(result)
                 } else {
                     log(() => `Ignored file: ${card.note.path} does not contain cloze pattern`);
@@ -212,7 +205,7 @@ export class ClozeParser implements PatternParser {
                     let tagInfo = TagParser.parse(regArr[2] || "")
                     let idTag = tagInfo.findTag(CardIDTag, card.ID, "c")
                     let originalID = idTag?.Original || ""
-                    let result = new clozePattern(card, body, regArr.index, regArr[0], regArr[1], originalID, idTag?.Canonical || newID, card.bodyOffsets[Number(bi)] + regArr.index)
+                    let result = new clozePattern(card, body, regArr.index, regArr[0], regArr[1], originalID, idTag?.Canonical || newID, card.bodyOffsets[index] + regArr.index)
                     results.push(result)
                 }
             }

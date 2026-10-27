@@ -18,7 +18,7 @@ import { syntaxTree } from "@codemirror/language";
 // Define the widget that will be used to replace the matched text
 export class EmojiWidget extends WidgetType {
     toDOM(view: EditorView): HTMLElement {
-        const span = document.createElement("span");
+        const span = createSpan();
 		span.classList.add("obsidanki-emoji-widget");
         span.innerText = "🏷";
         return span;
@@ -52,7 +52,7 @@ export class emojiplugin implements PluginValue {
                     // 注释写法 %%OBSIDANKI/xxx%%：语法树里是 comment-start / comment / comment-end 三个节点，
                     // 从 comment-start 起整段替换
                     if (node.name.contains("comment-start")) {
-                        let m = docText.slice(node.from, node.from + 200).match(/^%%OBSIDANKI\/[\/\w]+%%/)
+                        let m = docText.slice(node.from, node.from + 200).match(/^%%OBSIDANKI\/[/\w]+%%/)
                         if (m && !inSelection(view.state.selection, node.from, node.from + m[0].length)) {
                             builder.add(
                                 node.from,
@@ -148,7 +148,7 @@ export class TagParser {
     static parse(str: string) {
         let tags: TagInfo[] = []
         // Ordinary hashtags and current comment IDs; OBSIDANKI is reserved for comment IDs.
-        let results = str.matchAll(/#(?!OBSIDANKI(?:\/|\b))[\/\w]+|%%(OBSIDANKI\/[\/\w]+)%%/gm)
+        let results = str.matchAll(/#(?!OBSIDANKI(?:\/|\b))[/\w]+|%%(OBSIDANKI\/[/\w]+)%%/gm)
         for (let result of results) {
             tags.push(new TagInfo(result[0], result[1] || result[0]))
         }

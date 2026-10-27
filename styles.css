@@ -279,6 +279,12 @@
     min-height: 44px;
 }
 
+/* .modal 自带宽度，只调里面控件的宽度会溢出，得显式撑开容器 */
+.modal-container .modal.obsidanki-builder-modal {
+    width: 780px;
+    max-width: 92vw;
+}
+
 .obsidanki-builder .MuiSelect-select {
     white-space: normal;
 }

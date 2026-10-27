@@ -1,5 +1,5 @@
-import ObsidankiPlugin, { log } from "main";
-import { App, Modifier, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
+import ObsidankiPlugin, { getAppInstance, log } from "main";
+import { App, Modifier, Notice, Platform, PluginSettingTab, Setting, normalizePath } from "obsidian";
 import i18n from 'i18next';
 
 export interface ObsidankiSettings {
@@ -23,14 +23,22 @@ export const OBSIDANKI_DEFAULT_SETTINGS: ObsidankiSettings = {
     OneLineDelimeter: "::",
     OneLineReversedDelimeter: ":::",
     MultiLineDelimeter: "?",
-    ObsidankiDbPath: ".obsidian/obsidanki.db",
+    // Empty means the default file inside the vault's config folder.
+    ObsidankiDbPath: "",
     ExcludeWorkingPathesPattern: "",
     SourceNavigationModifier: Platform.isMacOS ? "Meta" : "Ctrl",
     CollapsedTreeNodes: [],
 	UseNewLineAsSplitter: false
 }
 
-// i18n.t('someKey');
+export function defaultDbPath(): string {
+    return normalizePath(`${getAppInstance().vault.configDir}/obsidanki.db`);
+}
+
+export function resolveDbPath(path: string): string {
+    const trimmed = path.trim();
+    return trimmed.length > 0 ? normalizePath(trimmed) : defaultDbPath();
+}
 
 // 排除规则一行一条。Obsidian 的路径相对 vault 根目录、不带开头的 /、分隔符是 /，
 // 所以顺手去掉首尾空白和开头的 / 或 ./，并把 Windows 风格的 \ 换成 /
@@ -42,8 +50,8 @@ export function parseExcludePatterns(setting: string): string[] {
 
 export let GlobalSettings: ObsidankiSettings
 
-export function setGlobalSettings(s: ObsidankiSettings) {
-    let settings = Object.assign({}, OBSIDANKI_DEFAULT_SETTINGS, s);
+export function setGlobalSettings(s: Partial<ObsidankiSettings> | null) {
+    let settings: ObsidankiSettings = Object.assign({}, OBSIDANKI_DEFAULT_SETTINGS, s);
     // Discard the retired TTS option from older saved settings.
     delete (settings as ObsidankiSettings & { WordTTSURL?: string }).WordTTSURL;
     log(() => ["GlobalSettings", settings]);
@@ -64,7 +72,6 @@ export class ObsidankiSettingTab extends PluginSettingTab {
         const { containerEl } = this;
         containerEl.empty();
         containerEl.addClass('obsidanki-ui');
-        containerEl.createEl('h2', { text: i18n.t('SettingTextObsidankiSettings') || "" });
 
         new Setting(containerEl)
             .setName(i18n.t('SettingsSourceNavigationModifier') || "")
@@ -162,17 +169,13 @@ export class ObsidankiSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName(i18n.t('SettingsDbPath') || '')
-            .setDesc(i18n.t('SettingsDbPathDesc') || "")
+            .setDesc(i18n.t('SettingsDbPathDesc', { path: defaultDbPath() }) || "")
             .addText(text => text
-                .setPlaceholder('.obsidian/obsidanki.db')
+                .setPlaceholder(defaultDbPath())
                 .setValue(GlobalSettings.ObsidankiDbPath)
                 .onChange(async (value) => {
-                    if (value.length > 0 && !(/^\s*$/.test(value))) {
-                        GlobalSettings.ObsidankiDbPath = value;
-                        await this.plugin.saveSettings();
-                    } else {
-                        new Notice(i18n.t('SettingsDbPathError') || "Cannot be empty or whitespace only.");
-                    }
+                    GlobalSettings.ObsidankiDbPath = value.trim().length > 0 ? normalizePath(value) : "";
+                    await this.plugin.saveSettings();
                 }))
         new Setting(containerEl)
             .setName(i18n.t('SettingsExcludeDirectories') || '')

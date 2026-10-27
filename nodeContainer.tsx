@@ -4,7 +4,7 @@ type ContainerProps = {
 	node: Node;
 };
 
-export class NodeContainer extends React.Component<ContainerProps, any> {
+export class NodeContainer extends React.Component<ContainerProps> {
 	containerRef: React.RefObject<HTMLDivElement>;
 
 	constructor(props: ContainerProps) {

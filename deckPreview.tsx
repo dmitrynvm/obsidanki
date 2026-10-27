@@ -21,7 +21,7 @@ const PAGE_SIZE = 20
 
 type PreviewNavigationState = {
 	route: "list" | "card"
-	tagName: string
+	tagName: TAGNAME
 	title: string
 	rule: RuleProperties | null
 	query: string
@@ -30,7 +30,7 @@ type PreviewNavigationState = {
 }
 
 // Keep navigation in the active plugin pane; embedded decks never replace their source note.
-export async function openDeckPreview(rule: RuleProperties | null, tagName: string, title: string): Promise<void> {
+export async function openDeckPreview(rule: RuleProperties | null, tagName: TAGNAME, title: string): Promise<void> {
 	const app = getAppInstance()
 	const active = app.workspace.getActiveViewOfType(View)?.leaf
 	const activeType = active?.getViewState().type
@@ -168,7 +168,7 @@ function PreviewCard({ pattern, arrangement, index, view, onCard }: { pattern: P
 					className="obsidanki-button obsidanki-preview-action"
 					title={String(t('DeckPreviewSource'))}
 					aria-label={String(t('DeckPreviewSource'))}
-					onClick={() => openPatternAt(pattern, arrangement)}
+					onClick={() => { void openPatternAt(pattern, arrangement) }}
 				/>
 			</div>
 		</Box>
@@ -241,10 +241,10 @@ function DeckPreview({ arrangement, state, view, onNavigate }: {
 			} else if (openedCard && event.key === 's') {
 				action = nextCard
 			} else if (openedCard && event.key === 'o') {
-				action = () => openPatternAt(openedCard, arrangement)
+				action = () => { void openPatternAt(openedCard, arrangement) }
 			} else if (openedCard && event.key === 'O' && previousCard.current) {
 				const previous = previousCard.current
-				action = () => openPatternAt(previous, arrangement)
+				action = () => { void openPatternAt(previous, arrangement) }
 			}
 			if (!action) return
 			event.preventDefault()

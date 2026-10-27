@@ -134,7 +134,7 @@ function buildRule(mode: string, conditions: Condition[]): RuleProperties {
     } else {
         conditionsPart = { all: list }
     }
-    return { conditions: conditionsPart, event: { type: "match" } } as RuleProperties
+    return { conditions: conditionsPart, event: { type: "match" } }
 }
 
 function regexError(conditions: Condition[]): string {
@@ -173,7 +173,7 @@ function DeckBuilder({ patterns, insertIntoNote }: BuilderProps) {
             return
         }
         setCount(null)
-        ParseRule(buildRule(mode, conditions), patterns).then((matched) => {
+        void ParseRule(buildRule(mode, conditions), patterns).then((matched) => {
             if (!cancelled) {
                 setCount(matched.length)
             }
@@ -335,7 +335,7 @@ function DeckBuilder({ patterns, insertIntoNote }: BuilderProps) {
                     borderTop: "1px solid var(--background-modifier-border)",
                 }}
             >
-                <Button className="obsidanki-button" disableRipple onClick={copyCodeBlock}>{t('DeckBuilderCopy')}</Button>
+                <Button className="obsidanki-button" disableRipple onClick={() => { void copyCodeBlock() }}>{t('DeckBuilderCopy')}</Button>
                 <Button className="obsidanki-button" disableRipple onClick={insertCodeBlock}>{t('DeckBuilderInsert')}</Button>
             </Stack>
         </Box>
@@ -347,7 +347,7 @@ function DeckBuilderHost({ app }: { app: App }) {
     const [patterns, setPatterns] = useState<Pattern[] | null>(null)
 
     useEffect(() => {
-        new ObsidankiAPI().getAllPattern().then(setPatterns)
+        void new ObsidankiAPI().getAllPattern().then(setPatterns)
     }, [])
 
     function insertIntoNote(text: string) {
@@ -369,9 +369,7 @@ export class DeckBuilderModal extends Modal {
     root: Root | null = null
 
     onOpen() {
-        // .modal 自带宽度，只调里面控件的宽度会溢出，得显式撑开容器
-        this.modalEl.style.width = "780px"
-        this.modalEl.style.maxWidth = "92vw"
+        this.modalEl.addClass("obsidanki-builder-modal")
         this.contentEl.addClasses(["obsidanki-ui", "obsidanki-builder"])
         this.root = createRoot(this.contentEl)
         this.root.render(<DeckBuilderHost app={this.app} />)

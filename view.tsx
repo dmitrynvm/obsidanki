@@ -5,13 +5,13 @@ import { IDComment } from 'cardHead';
 import i18n from 'i18next';
 import { RuleProperties } from 'json-rules-engine';
 import { log, getAppInstance } from 'main';
-import { Component, EditorPosition, ItemView, MarkdownRenderChild, MarkdownView, TFile, ViewStateResult, WorkspaceLeaf } from 'obsidian';
+import { Component, EditorPosition, ItemView, MarkdownRenderChild, MarkdownView, Notice, TFile, ViewStateResult, WorkspaceLeaf } from 'obsidian';
 import { openDeckPreview } from 'deckPreview';
 import { DeckTreeMenu } from 'deckTreeMenu';
 import * as React from "react";
 import { Root, createRoot } from "react-dom/client";
 import { I18nextProvider, Trans } from 'react-i18next';
-import { LearnEnum, LearnOpt, ReviewEnum, ReviewOpt } from "schedule";
+import { LearnEnum, LearnOpt, Moment, ReviewEnum, ReviewOpt } from "schedule";
 import { cardKeyScope, paneKeysActive, REVEAL_KEYS } from "keyboard";
 import { cardClickActive, preventCardMultiClickSelection } from "cardClick";
 
@@ -21,7 +21,7 @@ type ReviewingProps = {
 	arrangement: Arrangement
 	goStage: (stage: ReviewStage, history?: boolean) => void
 	view: Component
-	arrangeName: string
+	arrangeName: TAGNAME
 	isActive: () => boolean
 }
 
@@ -48,7 +48,7 @@ const GRADES: Grade[] = [
 ]
 
 // Anki-style compact interval: <1m, 45m, 3h, 2d, 1.7mo, 4.5y
-export function formatInterval(next: moment.Moment, now: moment.Moment = window.moment()): string {
+export function formatInterval(next: Moment, now: Moment = window.moment()): string {
 	const seconds = Math.max(0, next.diff(now, "seconds"))
 	if (seconds < 60) {
 		return "<1m"
@@ -129,7 +129,7 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 			view.editor.scrollIntoView({ from: tagpos, to: tagposEnd }, true)
 
 			// 避免某些情况仍然没有正确定位
-			setTimeout(function () {
+			window.setTimeout(function () {
 				view.editor.setSelection(tagpos, tagposEnd)
 				view.editor.scrollIntoView({ from: tagpos, to: tagposEnd }, true)
 			}, 800)
@@ -145,7 +145,7 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 		}
 		this.initFlag = false
 	}
-	async componentDidMount() {
+	componentDidMount() {
 		this.mounted = true
 		// Embedded decks stay mouse-only; pane keys follow the hosting window.
 		if (!(this.props.view instanceof MarkdownRenderChild)) {
@@ -155,7 +155,7 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 		}
 		if (!this.initFlag) {
 			this.initFlag = true
-			await this.next()
+			void this.next()
 		}
 	}
 	componentWillUnmount() {
@@ -194,8 +194,8 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 		switch (key) {
 			case "q": case "Escape": return () => this.props.goStage(ReviewStage.Loading)
 			case "s": return this.skip
-			case "o": return () => this.openPatternFile(this.state.nowPattern)
-			case "O": return () => this.openPatternFile(this.lastPattern)
+			case "o": return () => { void this.openPatternFile(this.state.nowPattern) }
+			case "O": return () => { void this.openPatternFile(this.lastPattern) }
 		}
 		if (!this.state.nowPattern) {
 			return null
@@ -221,6 +221,10 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 		this.busy = true
 		try {
 			await task()
+		} catch (error) {
+			// The grade, if any, is already saved; only showing the next card failed.
+			console.error(error)
+			new Notice(String(i18n.t('ReviewLoadFailed', { error: error instanceof Error ? error.message : String(error) })))
 		} finally {
 			this.busy = false
 		}
@@ -230,7 +234,7 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 		}
 	}
 	skip = () => {
-		this.run(this.next)
+		void this.run(this.next)
 	}
 	grade = (grade: Grade) => {
 		const pattern = this.state.nowPattern
@@ -238,8 +242,15 @@ class Reviewing extends React.Component<ReviewingProps, ReviewingState> {
 			return
 		}
 		const opt = this.state.learn ? new LearnOpt(grade.learn) : new ReviewOpt(grade.review)
-		this.run(async () => {
-			await pattern.SubmitOpt(opt)
+		void this.run(async () => {
+			try {
+				await pattern.SubmitOpt(opt)
+			} catch (error) {
+				// The card stays on screen; SubmitOpt restored its schedule, so grading again is safe.
+				console.error(error)
+				new Notice(String(i18n.t('ReviewSaveFailed', { error: error instanceof Error ? error.message : String(error) })))
+				return
+			}
 			await this.next()
 		})
 	}
@@ -342,10 +353,10 @@ function EmbeddedMenu({ arrangement, onStudy }: {
 	const stats = arrangement.stats()
 	return <div className="obsidanki-ui obsidanki-start">
 		{study ? <div className="obsidanki-start-row is-primary">
-			<button className="obsidanki-start-go" onClick={() => onStudy(arrangement.rule)}>
+			<button className="obsidanki-start-go" onClick={() => { void onStudy(arrangement.rule) }}>
 				<span className="obsidanki-start-label">{study.Display}</span>
 			</button>
-			<button className="obsidanki-start-count" title={`${i18n.t("DeckPreviewTab")}: ${study.Display}`} aria-label={`${i18n.t("DeckPreviewTab")}: ${study.Display} (${study.Count})`} onClick={() => openDeckPreview(arrangement.rule, TAGNAME.STUDY, study.Display)}>{study.Count}</button>
+			<button className="obsidanki-start-count" title={`${i18n.t("DeckPreviewTab")}: ${study.Display}`} aria-label={`${i18n.t("DeckPreviewTab")}: ${study.Display} (${study.Count})`} onClick={() => { void openDeckPreview(arrangement.rule, TAGNAME.STUDY, study.Display) }}>{study.Count}</button>
 		</div> : <div className="obsidanki-start-status">
 			{i18n.t(total > 0 ? "StartCaughtUp" : "StartNoCards")}
 			{total > 0 && next && <span className="obsidanki-start-next">{i18n.t("StartNextDue", { interval: formatInterval(next) })}</span>}
@@ -354,10 +365,10 @@ function EmbeddedMenu({ arrangement, onStudy }: {
 			<div className="obsidanki-start-today">{i18n.t("StartToday", { review: stats.ReviewCount, new: stats.NewCount, learn: stats.LearnCount })}</div>}
 		{total > 0 && <div className="obsidanki-start-decks">
 			<div className="obsidanki-start-row">
-				<button className="obsidanki-start-go" onClick={() => openDeckPreview(arrangement.rule, TAGNAME.ALLTAG, i18n.t("StartBrowse"))}>
+				<button className="obsidanki-start-go" onClick={() => { void openDeckPreview(arrangement.rule, TAGNAME.ALLTAG, i18n.t("StartBrowse")) }}>
 					<span className="obsidanki-start-label">{i18n.t("StartBrowse")}</span>
 				</button>
-				<button className="obsidanki-start-count" title={`${i18n.t("DeckPreviewTab")}: ${i18n.t("StartBrowse")}`} aria-label={`${i18n.t("DeckPreviewTab")}: ${i18n.t("StartBrowse")} (${total})`} onClick={() => openDeckPreview(arrangement.rule, TAGNAME.ALLTAG, i18n.t("StartBrowse"))}>{total}</button>
+				<button className="obsidanki-start-count" title={`${i18n.t("DeckPreviewTab")}: ${i18n.t("StartBrowse")}`} aria-label={`${i18n.t("DeckPreviewTab")}: ${i18n.t("StartBrowse")} (${total})`} onClick={() => { void openDeckPreview(arrangement.rule, TAGNAME.ALLTAG, i18n.t("StartBrowse")) }}>{total}</button>
 			</div>
 		</div>}
 	</div>

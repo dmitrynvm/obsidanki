@@ -49,7 +49,7 @@ class updateInfo {
 }
 
 function extractStrings(inputText: string): string[] {
-	const regex = /#[\/\w]+/gm;
+	const regex = /#[/\w]+/gm;
 	return inputText.match(regex) || [];
 }
 
@@ -171,9 +171,10 @@ class defaultCard implements Card {
 			if (committype.schedules) await DatabaseHelper.getInstance().saveReview(this.ID, this.schedules)
 			return
 		}
-		const originalText = await getAppInstance().vault.read(this.note)
-		let fileText = originalText
-		if (committype.ID == true && this.idGenFlag == false) {
+		let inserted = false
+		await getAppInstance().vault.process(this.note, (originalText) => {
+			inserted = false
+			let fileText = originalText
 			// 如果卡片内容被更改, 则阻止添加ID, 因为这会破坏卡片格式
 			if (fileText.contains(this.cardText)) {
 				// 如果不存在复习块ID 则先更新复习块块ID
@@ -191,12 +192,15 @@ class defaultCard implements Card {
 				fileText = fileText.replace(this.content, () => {
 					return newContent
 				})
-				this.updateList = []
-				this.idGenFlag = true // 确保只添加一次
+				inserted = true
 			}
+			// 内容未变化时返回原文, 不改动文件
+			return fileText === originalText ? originalText : fileText
+		})
+		if (inserted) {
+			this.updateList = []
+			this.idGenFlag = true // 确保只添加一次
 		}
-		// 提交变更
-		if (fileText !== originalText) await getAppInstance().vault.modify(this.note, fileText)
 		if (committype.schedules) await DatabaseHelper.getInstance().saveReview(this.ID, this.schedules)
 	}
 }

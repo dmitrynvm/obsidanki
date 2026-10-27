@@ -1,10 +1,10 @@
 {
 	"id": "obsidanki",
 	"name": "Obsidanki",
-	"version": "1.2.3",
-	"minAppVersion": "0.12.0",
-	"description": "Spaced repetition flashcards with an Anki-style review screen",
-	"author": "linanwx",
-	"authorUrl": "https://github.com/linanwx",
+	"version": "2.0.0",
+	"minAppVersion": "1.7.2",
+	"description": "Study flashcards from your notes on an Anki-style review screen: reveal the answer, then grade Again, Hard, Good or Easy.",
+	"author": "Dmitrii Nikolaev",
+	"authorUrl": "https://github.com/dmitrynvm",
 	"isDesktopOnly": false
 }

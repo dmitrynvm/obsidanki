@@ -4,7 +4,7 @@ import { ParseRule } from "deck"
 import i18next from "i18next"
 import { RuleProperties } from "json-rules-engine"
 import { Pattern } from "Pattern"
-import { defaultSchedule } from "schedule"
+import { Moment, defaultSchedule } from "schedule"
 import { GlobalSettings } from "setting"
 
 export class ArrangementItem {
@@ -51,7 +51,7 @@ function shuffled(p: Pattern[]): Pattern[] {
     return p
 }
 
-function aheadPatterns(p: Pattern[], now: moment.Moment): Pattern[] {
+function aheadPatterns(p: Pattern[], now: Moment): Pattern[] {
     return p.filter((p) => {
         let learnInfo = p.schedule.LearnInfo
         return !learnInfo.IsNew
@@ -76,11 +76,11 @@ export class PatternIter {
 }
 
 abstract class ArrangementBase {
-    abstract PatternSequence(Name: string): AsyncGenerator<PatternIter, boolean, unknown>
+    abstract PatternSequence(Name: TAGNAME): AsyncGenerator<PatternIter, boolean, unknown>
     abstract stats(): Stats
 }
 
-function isToday(date: moment.Moment): boolean {
+function isToday(date: Moment): boolean {
     const todayStart = window.moment().startOf('day')
     const todayEnd = window.moment().endOf('day')
     return date.isBetween(todayStart, todayEnd, null, '[]');
@@ -162,11 +162,11 @@ export class Arrangement extends ArrangementBase {
         }
         return undefined
     }
-    nextDue(): moment.Moment | undefined {
+    nextDue(): Moment | undefined {
         return this.aheadPatterns[0]?.schedule.NextTime
     }
     // 供预览用：按牌组取对应的 pattern 列表
-    patternsFor(name: string): Pattern[] {
+    patternsFor(name: TAGNAME): Pattern[] {
         if (name == TAGNAME.NEWTAG) {
             return this.newPattern
         } else if (name == TAGNAME.REVIEWTAG) {
@@ -231,7 +231,7 @@ export class Arrangement extends ArrangementBase {
         }
         return
     }
-    async *PatternSequence(name: string) {
+    async *PatternSequence(name: TAGNAME) {
         let patterns = null;
 
         if (name == TAGNAME.REVIEWTAG) {

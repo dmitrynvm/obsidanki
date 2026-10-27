@@ -2,7 +2,7 @@ import { Pattern } from "Pattern";
 import { findOutline } from "card";
 import { Engine, RuleProperties } from "json-rules-engine";
 import { log } from "main";
-import { FrontMatterCache, MarkdownPostProcessorContext, MarkdownRenderChild, getAllTags, parseFrontMatterTags } from "obsidian";
+import { MarkdownPostProcessorContext, MarkdownRenderChild, parseFrontMatterTags } from "obsidian";
 import React from "react";
 import { Root, createRoot } from "react-dom/client";
 import { App } from "view";
@@ -74,20 +74,15 @@ export async function ParseRule(rule: RuleProperties, allPattern: Pattern[]) {
             }
             return false;
         })
-        await Promise.all(allPattern.map(async (pattern, index) => {
+        await Promise.all(allPattern.map(async (pattern) => {
             let fact = convertToFact(pattern)
-            try {
-                return engine.run(fact).then((events) => {
-                    if (events.events.length > 0) {
-                        results.push(pattern);
-                    }
-                })
-            } catch (error) {
-                console.log(error)
+            const events = await engine.run(fact)
+            if (events.events.length > 0) {
+                results.push(pattern);
             }
         }))
     } catch (error) {
-        console.log(error)
+        console.error(error)
     }
     return results
 }
@@ -100,9 +95,9 @@ export function handlerDeckCode(source: string, el: HTMLElement, ctx: MarkdownPo
         testEngine.addRule(config.rule)
         ctx.addChild(new DeckView(el, config))
     } catch (error) {
-        console.log(error)
+        console.error(error)
         el.createSpan(
-            { "text": error }
+            { "text": String(error) }
         )
     }
 }

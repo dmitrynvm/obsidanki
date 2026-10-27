@@ -3,11 +3,10 @@ import {NewCardSearch} from 'cardSearch';
 import {handlerDeckCode} from 'deck';
 import {DeckBuilderModal} from 'deckBuilder';
 import {initLanguage} from 'language';
-import {debounce} from 'lodash';
-import {App, EventRef, MarkdownView, Notice, Plugin, TFile, View, addIcon} from 'obsidian';
+import {App, EventRef, MarkdownView, Notice, Plugin, TFile, View, addIcon, debounce} from 'obsidian';
 import {ClozeParser} from 'patternCloze';
 import {MultiLineParser, SingleLineParser} from 'patternLine';
-import {ObsidankiSettingTab, GlobalSettings, setGlobalSettings} from 'setting';
+import {ObsidankiSettingTab, GlobalSettings, setGlobalSettings, ObsidankiSettings} from 'setting';
 import {emojiTagPlugin} from 'tag';
 import {ParserCollection} from "./ParserCollection";
 import {ReviewView, VIEW_TYPE_REVIEW} from './view';
@@ -26,19 +25,19 @@ export function getAppInstance(): App {
 	return appInstance;
 }
 
-export function log(logSupplier: () => any): void {
+export function log(logSupplier: () => unknown): void {
 	if (DEBUG_ENABLED) {
 		const logParts = logSupplier();
 		if (Array.isArray(logParts)) {
-			console.info("[Obsidanki]", ...logParts);
+			console.debug("[Obsidanki]", ...(logParts as unknown[]));
 			return;
 		} else {
-			console.info("[Obsidanki]", logParts);
+			console.debug("[Obsidanki]", logParts);
 		}
 	}
 }
 
-export function logTrueExpr(logSupplier: () => any): boolean {
+export function logTrueExpr(logSupplier: () => unknown): boolean {
 	log(logSupplier);
 	return true;
 }
@@ -50,8 +49,8 @@ class ObsidankiWriterHelper {
 	event1: EventRef
 	event2: EventRef
 	checkDebounced = debounce((file: TFile, text: string) => {
-		this.check(file, text);
-	}, 500);
+		void this.check(file, text);
+	}, 500, true);
 
 	unregister() {
 		getAppInstance().workspace.offref(this.event1)
@@ -59,14 +58,14 @@ class ObsidankiWriterHelper {
 	}
 
 	constructor() {
-		this.event1 = getAppInstance().workspace.on("active-leaf-change", async () => {
+		this.event1 = getAppInstance().workspace.on("active-leaf-change", () => {
 			let view = getAppInstance().workspace.getActiveViewOfType(MarkdownView)
 			if (!view || !view.file) {
 				return
 			}
 			this.checkDebounced(view.file, view.editor.getValue())
 		})
-		this.event2 = getAppInstance().workspace.on("editor-change", async (editor, view) => {
+		this.event2 = getAppInstance().workspace.on("editor-change", (editor, view) => {
 			if (!view || !view.file) {
 				return;
 			}
@@ -149,14 +148,14 @@ export default class ObsidankiPlugin extends Plugin {
 			await this.openView()
 		});
 		this.addCommand({
-			id: 'obsidanki-open-review',
-			name: t('OpenObsidanki'),
+			id: 'open-decks',
+			name: t('OpenDecks'),
 			callback: () => {
-				this.openView()
+				void this.openView()
 			}
 		})
 		this.addCommand({
-			id: 'obsidanki-deck-builder',
+			id: 'open-deck-builder',
 			name: t('OpenDeckBuilder'),
 			callback: () => {
 				new DeckBuilderModal(this.app).open()
@@ -168,7 +167,7 @@ export default class ObsidankiPlugin extends Plugin {
 		this.writerHelper = new ObsidankiWriterHelper()
 		this.registerMarkdownCodeBlockProcessor("obsidanki-deck-config", handlerDeckCode)
 		if (DEBUG_ENABLED) {
-			new Notice('ObsidankiPluginLoaded with debug flag')
+			new Notice('Obsidanki loaded in debug mode')
 		}
 	}
 
@@ -180,14 +179,13 @@ export default class ObsidankiPlugin extends Plugin {
 	}
 
 	onunload() {
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_REVIEW)
 		const parserCol = ParserCollection.getInstance();
 		parserCol.clean()
 		this.writerHelper.unregister()
 	}
 
 	async loadSettings() {
-		setGlobalSettings(await this.loadData())
+		setGlobalSettings(await this.loadData() as Partial<ObsidankiSettings> | null)
 	}
 
 	async saveSettings() {

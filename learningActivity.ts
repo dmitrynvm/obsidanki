@@ -15,7 +15,7 @@ export function activityYear(activity: ActivityCounts, year: number, today: Date
     const todayKey = activityDate(today)
     const first = new Date(year, 0, 1, 12)
     const offset = (first.getDay() + 6) % 7
-    const days: (ActivityDay | null)[] = Array(offset).fill(null)
+    const days: (ActivityDay | null)[] = Array<ActivityDay | null>(offset).fill(null)
     // Grid index of each month's first day.
     const firsts: number[] = []
     let reviews = 0

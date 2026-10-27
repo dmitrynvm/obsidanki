@@ -97,7 +97,7 @@ class defaultCardSearch implements cardSearcher {
 		let frontmatter = false
 		for (const match of text.matchAll(/^.*$/gm)) {
 			const line = match[0].replace(/\r$/, "")
-			const offset = match.index!
+			const offset = match.index ?? 0
 			if (offset === 0 && line.replace(/^\uFEFF/, "") === "---") {
 				frontmatter = true
 				continue

@@ -1,6 +1,7 @@
+import type React from 'react';
 import { CardIDTag } from 'cardHead';
 import { Component } from 'obsidian';
-import { Operation, PatternSchedule } from 'schedule';
+import { NewSchedule, Operation, PatternSchedule } from 'schedule';
 import { TagParser } from 'tag';
 import { Card } from './card';
 
@@ -26,9 +27,23 @@ export abstract class Pattern {
 		this.TagID = id
 		this.sourceOffset = sourceOffset
 	}
-	abstract SubmitOpt(opt: Operation): Promise<void>;
-	abstract Component(props:PatternProps): JSX.Element;
+	abstract Component(props:PatternProps): React.JSX.Element;
 	abstract insertPatternID(): void;
+	// 界面按钮点击: apply the grade and persist it. On failure the schedule is restored so a retry does not grade twice.
+	async SubmitOpt(opt: Operation): Promise<void> {
+		const schedule = this.card.getSchedule(this.TagID)
+		const before = NewSchedule(schedule.id)
+		before.copy(schedule)
+		schedule.apply(opt)
+		try {
+			// 原文中不一定包含pattern的ID 可能需要更新
+			this.insertPatternID()
+			await this.card.commitFile({ ID: true, schedules: true })
+		} catch (error) {
+			schedule.copy(before)
+			throw error
+		}
+	}
 	// 纯正面文本（不含答案），供预览用
 	abstract get FrontText(): string;
 	// Answer text used by card browsing and search.

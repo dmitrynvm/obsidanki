@@ -1,6 +1,10 @@
 import { log } from "main";
 import { GlobalSettings } from "setting";
 
+// Obsidian bundles moment; its typings expose the global `moment` namespace.
+export type Moment = moment.Moment
+export type Duration = moment.Duration
+
 export enum ReviewEnum {
     // 不会
     HARD = 0,
@@ -46,7 +50,7 @@ export class LearnOpt extends Operation {
 }
 
 export interface scheduleCalc {
-    get Gap(): moment.Duration
+    get Gap(): Duration
     get Ease(): number
 }
 
@@ -57,14 +61,14 @@ class LearnInfo {
 }
 
 export interface scheduleArrange {
-    get LastTime(): moment.Moment
-    get NextTime(): moment.Moment
-    get LearnedTime(): moment.Moment
+    get LastTime(): Moment
+    get NextTime(): Moment
+    get LearnedTime(): Moment
     get LearnInfo(): LearnInfo
     // 根据操作更新复习计划
     apply(opt: Operation): void
     // 获取下次需要复习的时间
-    CalcNextTime(opt: ReviewEnum): moment.Moment
+    CalcNextTime(opt: ReviewEnum): Moment
     // 获取学习的进度
     CalcLearnRate(opt: LearnEnum): number
 }
@@ -114,31 +118,31 @@ export class defaultSchedule implements PatternSchedule {
     Opts: string
     Learned: string | null
     LearnedCount: number | null
-    get LearnedTime(): moment.Moment {
+    get LearnedTime(): Moment {
         if (!this.Learned) {
             return this.LastTime
         }
         return window.moment(this.Learned, "YYYY-MM-DD HH:mm:ss")
     }
-    set LearnedTime(t: moment.Moment) {
+    set LearnedTime(t: Moment) {
         this.Learned = t.locale('en').format("YYYY-MM-DD HH:mm:ss")
     }
-    get LastTime(): moment.Moment {
+    get LastTime(): Moment {
         if (!this.Last) {
             return window.moment()
         }
         return window.moment(this.Last, "YYYY-MM-DD HH:mm")
     }
-    set LastTime(t: moment.Moment) {
+    set LastTime(t: Moment) {
         this.Last = t.locale('en').format("YYYY-MM-DD HH:mm")
     }
-    get NextTime(): moment.Moment {
+    get NextTime(): Moment {
         if (!this.Next) {
             return window.moment()
         }
         return window.moment(this.Next, "YYYY-MM-DD HH:mm")
     }
-    set NextTime(t: moment.Moment) {
+    set NextTime(t: Moment) {
         this.Next = t.locale('en').format("YYYY-MM-DD HH:mm")
     }
     get OptArr(): ReviewEnum[] {
@@ -148,7 +152,7 @@ export class defaultSchedule implements PatternSchedule {
         }
         return ret
     }
-    get Gap(): moment.Duration {
+    get Gap(): Duration {
         if (!this.Last) {
             return window.moment.duration(12, "hours")
         }
@@ -185,17 +189,18 @@ export class defaultSchedule implements PatternSchedule {
         if (info.IsNew) {
             return info
         }
-        if (!this.Opts) {
-        } else if (this.Opts.at(-1) == String(ReviewEnum.EASY)) {
-        } else if (this.Opts.at(-1) == String(ReviewEnum.FAIR)) {
-        } else if (this.LearnedCount && this.LearnedCount >= 2) {
-        } else {
+        const lastOpt = this.Opts ? this.Opts.at(-1) : undefined
+        const settled = !this.Opts
+            || lastOpt == String(ReviewEnum.EASY)
+            || lastOpt == String(ReviewEnum.FAIR)
+            || (this.LearnedCount && this.LearnedCount >= 2)
+        if (!settled) {
             if (this.LearnedCount == null) {
                 // 标记为HARD和FORGET后
                 // 没有学习记录立即复习一次
                 info.IsLearn = true
             } else {
-                let checkPoint: moment.Moment
+                let checkPoint: Moment
                 if (this.LearnedCount <= -2) {
                     checkPoint = window.moment().add(-10, "minutes")
                 } else if (this.LearnedCount <= -1) {
@@ -254,8 +259,8 @@ export class defaultSchedule implements PatternSchedule {
         this.Opts += opt.toString();
         this.LastTime = window.moment();
     }
-    CalcNextTime(opt: ReviewEnum): moment.Moment {
-        let duration: moment.Duration;
+    CalcNextTime(opt: ReviewEnum): Moment {
+        let duration: Duration;
         if (opt == ReviewEnum.EASY) {
             duration = new easeSchedule(this).calculate();
         } else if (opt == ReviewEnum.FAIR) {
@@ -296,7 +301,7 @@ export class defaultSchedule implements PatternSchedule {
         return false
     }
     get Ease(): number {
-        log(() => `opts is '${this.OptArr}' for ${this.id}`);
+        log(() => `opts is '${this.OptArr.join(",")}' for ${this.id}`);
         // 困难扣除
         let hardBonus = 0
         for (let opt of this.OptArr.slice(-20)) {
@@ -380,15 +385,15 @@ abstract class scheduler {
     get schedule(): scheduleCalc {
         return this._schedule
     }
-    abstract calculate(): moment.Duration
+    abstract calculate(): Duration
 }
 
 function randomIncrease(value: number) {
     // 生成一个0.95到1.05之间的随机数
-    var randomFactor = Math.random() * 0.1 + 0.95;
+    const randomFactor = Math.random() * 0.1 + 0.95;
 
     // 计算增加后的值
-    var increasedValue = value * randomFactor;
+    const increasedValue = value * randomFactor;
 
     // 返回增加后的值，保留整数
     return parseFloat(increasedValue.toFixed(0));
@@ -396,7 +401,7 @@ function randomIncrease(value: number) {
 
 // 简单难度计算
 class easeSchedule extends scheduler {
-    calculate(): moment.Duration {
+    calculate(): Duration {
         let basesecond = this.schedule.Gap.asSeconds() * this.schedule.Ease / 100;
         let addsecond = Number(GlobalSettings.EasyBonus) * 24 * 60 * 60
         let newrand = randomIncrease(basesecond + addsecond)
@@ -407,7 +412,7 @@ class easeSchedule extends scheduler {
 
 // 正常难度计算
 class fairSchedule extends scheduler {
-    calculate(): moment.Duration {
+    calculate(): Duration {
         let basesecond = this.schedule.Gap.asSeconds() * this.schedule.Ease / 100;
         let newrand = randomIncrease(basesecond)
         let newdiff = window.moment.duration(newrand, "seconds")
@@ -417,7 +422,7 @@ class fairSchedule extends scheduler {
 
 // 困难难度计算
 class hardSchedule extends scheduler {
-    calculate(): moment.Duration {
+    calculate(): Duration {
         let basesecond = this.schedule.Gap.asSeconds() * 100 / this.schedule.Ease;
         let newrand = randomIncrease(basesecond)
         let newdiff = window.moment.duration(newrand, "seconds")
@@ -427,7 +432,7 @@ class hardSchedule extends scheduler {
 
 // 不会难度计算
 class unknowSchedule extends scheduler {
-    calculate(): moment.Duration {
+    calculate(): Duration {
         let basesecond = this.schedule.Gap.asSeconds() * 100 / this.schedule.Ease;
         let addsecond = Number(GlobalSettings.HardBonus) * 24 * 60 * 60;
         let diffsecond = basesecond - addsecond

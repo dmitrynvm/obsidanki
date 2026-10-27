@@ -13,7 +13,7 @@ const videoExt = ['mp4', 'webm', 'ogv'];
 export async function renderMarkdown(markdown: string, el: HTMLDivElement, sourcePath: string, component: Component): Promise<void> {
     el.empty()
     try {
-        await MarkdownRenderer.renderMarkdown(markdown, el, sourcePath, component);
+        await MarkdownRenderer.render(getAppInstance(), markdown, el, sourcePath, component);
         await handleEmbeds(el, sourcePath);
     } catch (e) {
         console.error(e)
@@ -167,7 +167,7 @@ function handleFile(el: HTMLElement, file: TFile) {
     a.addEventListener('click', (event) => {
         event.preventDefault(); // 阻止默认的链接跳转行为
         // 手动调用 Obsidian 的 API 来打开文件
-        getAppInstance().workspace.getLeaf(true).openFile(file);
+        void getAppInstance().workspace.getLeaf(true).openFile(file);
     });
 }
 
@@ -186,7 +186,7 @@ function handleLink(el: HTMLElement, sourcePath: string, link: string) {
     a.addEventListener('click', (event) => {
         event.preventDefault(); // 阻止默认的链接跳转行为
         // 手动调用 Obsidian 的 API 来打开文件
-        getAppInstance().workspace.openLinkText(link, sourcePath, true)
+        void getAppInstance().workspace.openLinkText(link, sourcePath, true)
     });
 }
 
@@ -215,9 +215,10 @@ export class MarkdownRenderComponent extends React.Component<MarkdownRenderProps
 
     renderMarkdown = () => {
         if (this.ref.current) {
-            this.ref.current.innerHTML = '';
+            this.ref.current.empty();
 
-            MarkdownRenderer.renderMarkdown(
+            MarkdownRenderer.render(
+                getAppInstance(),
                 this.props.markdown,
                 this.ref.current,
                 this.props.sourcePath,
