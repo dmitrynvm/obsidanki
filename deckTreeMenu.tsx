@@ -39,6 +39,7 @@ export function DeckTreeMenu({ arrangement, onStudy, onCollapsedChange }: DeckTr
     const root = React.useRef<HTMLDivElement>(null)
     const rowElements = React.useRef(new Map<string, HTMLDivElement>())
     const treeId = React.useId()
+    const titleId = React.useId()
     const { nodes, maxDepth } = React.useMemo(() => {
         const nodes = buildDeckTree(arrangement)
         let maxDepth = 1
@@ -206,14 +207,19 @@ export function DeckTreeMenu({ arrangement, onStudy, onCollapsedChange }: DeckTr
         ref={root}
         style={{ '--obsidanki-tree-count-digits': countDigits, '--obsidanki-tree-levels': maxDepth } as React.CSSProperties}
     >
-        {nodes.length === 0 && <div className="obsidanki-start-status">{i18n.t('StartNoCards')}</div>}
-        {caughtUp && <div className="obsidanki-start-status">
-            {i18n.t('StartCaughtUp')}
-            {next && <span className="obsidanki-start-next">{i18n.t('StartNextDue', { interval: formatInterval(next) })}</span>}
-        </div>}
-        {nodes.length > 0 && <ul className="obsidanki-tree-roots" aria-label={String(i18n.t('TreeLabel'))}>
-            {nodes.map(node => renderNode(node))}
-        </ul>}
+        <section aria-labelledby={titleId}>
+            <div className="obsidanki-section-header">
+                <h2 id={titleId}>{i18n.t('TreeTitle')}</h2>
+            </div>
+            {nodes.length === 0 && <div className="obsidanki-start-status">{i18n.t('StartNoCards')}</div>}
+            {caughtUp && <div className="obsidanki-start-status">
+                {i18n.t('StartCaughtUp')}
+                {next && <span className="obsidanki-start-next">{i18n.t('StartNextDue', { interval: formatInterval(next) })}</span>}
+            </div>}
+            {nodes.length > 0 && <ul className="obsidanki-tree-roots" aria-labelledby={titleId}>
+                {nodes.map(node => renderNode(node))}
+            </ul>}
+        </section>
         <LearningHeatmap />
     </div>
 }

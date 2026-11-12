@@ -1,5 +1,5 @@
 import esbuild from "esbuild";
-import { appendFile, readdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, readdir, readFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import path from "node:path";
 import process from "node:process";
@@ -67,7 +67,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.`;
 
-// Bundled packages keep their license texts in THIRD_PARTY_NOTICES.md and at the end of main.js.
+// Bundled packages keep their license texts at the end of main.js.
 async function writeNotices(metafile) {
 	const packages = new Map();
 	for (const input of Object.keys(metafile.inputs)) {
@@ -89,7 +89,6 @@ async function writeNotices(metafile) {
 	}
 	const sections = [...texts].map(([text, entries]) => `${entries.map(entry => `- ${entry}`).join('\n')}\n\n${text}`);
 	const notices = `Obsidanki bundles the following third-party software. Each group lists the packages covered by the license text that follows it.\n\n${sections.join('\n\n---\n\n')}\n`;
-	await writeFile('THIRD_PARTY_NOTICES.md', `# Third-party software notices\n\n${notices}`);
 	await appendFile('main.js', `\n/*! Third-party software notices\n\n${notices.replaceAll('*/', '* /')}*/\n`);
 }
 

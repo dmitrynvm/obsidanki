@@ -750,7 +750,7 @@
     }
 }
 
-/* Learning activity shares the tree's reading font and neutral theme colors. */
+/* The Timeline calendar shares the tree's reading font and neutral theme colors. */
 @property --obsidanki-activity-cell {
     syntax: '<length>';
     inherits: true;
@@ -773,7 +773,8 @@
     font-variant-numeric: tabular-nums;
 }
 
-.obsidanki-activity-header,
+/* Main-screen section titles: Dictionary above the tree, Timeline above the calendar. */
+.obsidanki-section-header,
 .obsidanki-activity-footer {
     display: flex;
     align-items: center;
@@ -782,9 +783,16 @@
     gap: var(--size-4-2) var(--size-4-4);
 }
 
-.obsidanki-activity-header h2 {
-    margin: 0;
-    padding: 0;
+/* Both rows match the year selector's height, so the two titles sit alike. */
+.obsidanki-section-header {
+    min-height: 32px;
+    margin-bottom: var(--size-4-1);
+}
+
+/* Things 3 forces heading margins, padding and weight with !important; section titles stay compact. */
+.obsidanki-section-header h2 {
+    margin: 0 !important;
+    padding: 0 !important;
     border: none;
     font-family: inherit;
     font-size: var(--font-ui-medium);
@@ -793,7 +801,7 @@
     color: var(--text-normal);
 }
 
-.obsidanki-activity-header select {
+.obsidanki-section-header select {
     min-height: 32px;
     padding-inline: var(--size-4-2) var(--size-4-6);
     font-family: inherit;
@@ -987,7 +995,8 @@
 }
 
 @media (pointer: coarse) {
-    .obsidanki-activity-header select {
+    .obsidanki-section-header,
+    .obsidanki-section-header select {
         min-height: 44px;
     }
 }

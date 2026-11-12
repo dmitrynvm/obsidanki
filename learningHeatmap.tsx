@@ -87,7 +87,7 @@ export function LearningHeatmap() {
         '--obsidanki-activity-weeks': calendar.weeks,
         '--obsidanki-activity-half': Math.max(split, calendar.weeks - split),
     } as React.CSSProperties}>
-        <div className="obsidanki-activity-header">
+        <div className="obsidanki-section-header">
             <h2 id={titleId}>{i18n.t('ActivityTitle')}</h2>
             <select aria-label={String(i18n.t('ActivityYear'))} value={year}
                 onChange={event => { setChosenYear(Number(event.target.value)); setSelected('') }}>
